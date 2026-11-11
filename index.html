@@ -197,11 +197,12 @@ body.picking #sheet,body.picking #plan{display:none}
 </div>
 <div id="newver" class="card" hidden><span>Er is een nieuwe versie van de app.</span><button class="btn primary" id="newverBtn">Bijwerken</button></div>
 <div id="toast" hidden></div>
+<div id="ivan" hidden role="alertdialog" aria-modal="true" aria-labelledby="ivanTxt"><div class="card"><div class="ivan-emoji" aria-hidden="true">🍻</div><div id="ivanTxt">ZUIPEN BIJ DEN IVAN</div><button class="btn primary" id="ivanOk">Proost!</button></div></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.15'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.16'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -363,6 +364,9 @@ function placeArea(f){
   if(Array.isArray(e) && e.length===4){ const half=hav([e[3],e[0]],[e[1],e[2]])/2; if(half>100) return Math.round(Math.min(Math.max(half*0.8,300),3000)); }
   return def;
 }
+// Grapje: bestemming in Rekem
+function showIvan(){ const d=$('#ivan'); d.hidden=false; $('#ivanOk').focus(); try{ navigator.vibrate?.([80,60,80]); }catch(e){} }
+$('#ivanOk')?.addEventListener('click',()=>{ $('#ivan').hidden=true; });
 function hideSug(){ $('#suggest').hidden=true; sugItems=[]; }
 function pick(i){
   const f=sugItems[i]; if(!f) return;
@@ -370,7 +374,7 @@ function pick(i){
   const loc={lat,lon,label:[l.line1,l.line2].filter(Boolean).join(', ')};
   if(sugTarget.id==='via'){ const a=placeArea(f); if(a) loc.area=a; sugTarget.value=''; hideSug(); sugTarget.blur(); addVia(loc); return; }
   sugTarget.value=loc.label;
-  if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); } else state.from=loc;
+  if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); if(/\bRekem\b/i.test(loc.label) || /\b3621\b/.test(loc.label) || /^rekem$/i.test(f.properties?.city||f.properties?.locality||f.properties?.district||'')) setTimeout(showIvan, 300); } else state.from=loc;
   hideSug(); sugTarget.blur(); updateMarkers(); plan();
 }
 for(const id of ['from','to','via']){
