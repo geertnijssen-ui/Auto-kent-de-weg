@@ -33,7 +33,7 @@ b,strong,.btn,#dist,.route .time{font-weight:800}
 .field input{padding:12px 0;font-weight:700}
 .field input::placeholder{color:var(--muted);font-weight:600}
 .iconbtn{width:46px;height:46px;border-radius:50%;background:var(--bg);color:var(--accent-dark)}
-.via{background:var(--accent);border-radius:99px;font-weight:700}
+.via{background:#8e6bf2;border-radius:99px;font-weight:700}
 #suggest{border-radius:20px}
 #suggest li{border-radius:14px;font-weight:700}
 #suggest li small{font-weight:600}
@@ -77,3 +77,11 @@ b,strong,.btn,#dist,.route .time{font-weight:800}
 #pickbar,#newver{border-radius:24px}
 .me,.me svg{width:40px;height:40px}
 .me svg{filter:drop-shadow(0 3px 4px rgba(0,0,0,.3))}
+
+/* Grapje: popup bij een bestemming in Rekem */
+#ivan{position:fixed;inset:0;z-index:800;display:grid;place-items:center;padding:24px;background:rgba(29,43,68,.45)}
+#ivan .card{max-width:340px;width:100%;padding:24px 20px 20px;text-align:center;display:grid;gap:14px;border-radius:28px;animation:ivanpop .35s cubic-bezier(.2,1.6,.4,1)}
+#ivan .ivan-emoji{font-size:56px;line-height:1}
+#ivanTxt{font-size:28px;font-weight:800;line-height:1.15;color:var(--accent-dark)}
+@keyframes ivanpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){#ivan .card{animation:none}}
