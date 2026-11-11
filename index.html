@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Routenet</title>
-<meta name="theme-color" content="#1f3d2f">
+<meta name="theme-color" content="#1ea0dc">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
 <style>
 /* Layout: kaart over het hele scherm, zoekpaneel boven, routekaartjes in een onderpaneel; tijdens navigatie een grote instructiebalk boven en een statusbalk onder. */
 :root{
@@ -117,6 +117,7 @@ body.picking #sheet,body.picking #plan{display:none}
 .me svg{width:34px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));transition:transform .4s}
 @media (prefers-reduced-motion:reduce){.me svg{transition:none}}
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div id="map"></div>
@@ -126,7 +127,7 @@ body.picking #sheet,body.picking #plan{display:none}
     <div class="fields">
       <div class="field"><span class="dot" style="background:var(--accent)"></span><input id="from" placeholder="Mijn locatie" autocomplete="off" aria-label="Van"><button class="clear" data-for="from" aria-label="Wis van">×</button></div>
       <div class="field"><span class="dot" style="background:var(--busy)"></span><input id="to" placeholder="Waar wil je heen?" autocomplete="off" aria-label="Naar"><button class="clear" data-for="to" aria-label="Wis naar">×</button></div>
-      <div class="field" id="viaField" hidden><span class="dot" style="background:#1a73e8"></span><input id="via" placeholder="Rijden via… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
+      <div class="field" id="viaField" hidden><span class="dot" style="background:#8e6bf2"></span><input id="via" placeholder="Rijden via… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
       <div id="vias" class="vias" hidden></div>
     </div>
     <div class="side">
@@ -187,7 +188,7 @@ body.picking #sheet,body.picking #plan{display:none}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.11'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.13'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -212,9 +213,9 @@ const routeLayer = L.layerGroup().addTo(map);
 const zoneLayer = L.layerGroup().addTo(map);
 let fromMarker=null, toMarker=null, meMarker=null;
 const pinIcon = c => L.divIcon({className:'', iconSize:[26,34], iconAnchor:[13,32],
-  html:`<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 33s11-11.5 11-20A11 11 0 0 0 2 13c0 8.5 11 20 11 20z" fill="${c}" stroke="#fff" stroke-width="2"/><circle cx="13" cy="13" r="4" fill="#fff"/></svg>`});
-const meIcon = L.divIcon({className:'me', iconSize:[34,34], iconAnchor:[17,17],
-  html:`<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#fff"/><circle cx="17" cy="17" r="12" fill="#1a73e8"/><path d="M17 7l6 15-6-3.5-6 3.5z" fill="#fff"/></svg>`});
+  html:`<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 33s11-11.5 11-20A11 11 0 0 0 2 13c0 8.5 11 20 11 20z" fill="${c}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/><circle cx="13" cy="13" r="4.5" fill="#fff"/></svg>`});
+const meIcon = L.divIcon({className:'me', iconSize:[40,40], iconAnchor:[20,20],
+  html:`<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="19" fill="#1ea0dc" opacity=".22"/><circle cx="20" cy="20" r="14" fill="#fff"/><circle cx="20" cy="20" r="11.5" fill="#1ea0dc"/><path d="M20 10.5l6.5 15.5-6.5-3.8-6.5 3.8z" fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`});
 
 /* ---------- hulpfuncties ---------- */
 function decode(str, prec=6){
@@ -273,9 +274,9 @@ let viaMarkers=[];
 function updateMarkers(){
   if(fromMarker){ map.removeLayer(fromMarker); fromMarker=null; }
   if(toMarker){ map.removeLayer(toMarker); toMarker=null; }
-  if(state.from) fromMarker=L.marker([state.from.lat,state.from.lon],{icon:pinIcon('#1f7a4d')}).addTo(map);
-  if(state.to) toMarker=L.marker([state.to.lat,state.to.lon],{icon:pinIcon('#d2483a')}).addTo(map);
-  viaMarkers.forEach(m=>map.removeLayer(m)); viaMarkers=state.vias.map(v=>L.marker([v.lat,v.lon],{icon:pinIcon('#1a73e8')}).addTo(map));
+  if(state.from) fromMarker=L.marker([state.from.lat,state.from.lon],{icon:pinIcon('#1ea0dc')}).addTo(map);
+  if(state.to) toMarker=L.marker([state.to.lat,state.to.lon],{icon:pinIcon('#ec4d4d')}).addTo(map);
+  viaMarkers.forEach(m=>map.removeLayer(m)); viaMarkers=state.vias.map(v=>L.marker([v.lat,v.lon],{icon:pinIcon('#8e6bf2')}).addTo(map));
   renderVias();
 }
 function renderVias(){
@@ -582,15 +583,15 @@ function drawRoute(r, sel){
   if(r.edges && r.edges.length){
     r.edges.forEach(e=>{
       const seg=r.shape.slice(e.begin_shape_index, e.end_shape_index+1);
-      if(seg.length>1) L.polyline(seg,{color: sel?CLASS_HEX(e.road_class):'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
+      if(seg.length>1) L.polyline(seg,{color: sel?CLASS_HEX(e.road_class):'#8a9a90', weight: sel?8:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
     });
-  } else L.polyline(r.shape,{color: sel?'#1f7a4d':'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
+  } else L.polyline(r.shape,{color: sel?'#1ea0dc':'#8a9a90', weight: sel?8:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
 }
 function renderRoutes(fit){
   routeLayer.clearLayers();
   state.routes.forEach((r,i)=>{ if(i!==state.sel){ const casing=L.polyline(r.shape,{color:'transparent',weight:22}).addTo(routeLayer); casing.on('click',()=>{ state.sel=i; renderRoutes(false); }); drawRoute(r,false);} });
   const cur=state.routes[state.sel];
-  L.polyline(cur.shape,{color:'#0b2a1b',weight:11,opacity:.35,interactive:false}).addTo(routeLayer);
+  L.polyline(cur.shape,{color:'#1d2b44',weight:13,opacity:.85,interactive:false}).addTo(routeLayer);
   drawRoute(cur,true); drawCams(cur);
   if(fit) map.fitBounds(L.latLngBounds(cur.shape),{paddingTopLeft:[30,140],paddingBottomRight:[30,Math.min(window.innerHeight*0.55,420)]});
   const fastest=Math.min(...state.routes.map(r=>r.time));
@@ -644,7 +645,7 @@ const nav = {
     for(let i=1;i<r.shape.length;i++) this.cum.push(this.cum[i-1]+hav(r.shape[i-1],r.shape[i]));
     this.total=this.cum[this.cum.length-1]; this.idx=0; this.off=0; this.announced={};
     routeLayer.clearLayers();
-    L.polyline(r.shape,{color:'#0b2a1b',weight:12,opacity:.35,interactive:false}).addTo(routeLayer);
+    L.polyline(r.shape,{color:'#1d2b44',weight:14,opacity:.85,interactive:false}).addTo(routeLayer);
     drawRoute(r,true); drawCams(r); this.camSaid={};
   },
   async start(sim){

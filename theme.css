@@ -1,0 +1,79 @@
+/* Thema "Hemelsblauw": een eigen, vrolijk en rond navigatie-uiterlijk.
+   Wordt na de basisstijl in index.html geladen en overschrijft vooral kleuren, rondingen en schaduwen.
+   Alle vormen en kleuren zijn eigen ontwerp; er worden geen logo's, figuren of beelden van andere apps gebruikt. */
+:root{
+  --bg:#edf5fb; --panel:#ffffff; --fg:#1d2b44; --muted:#62718a; --line:#d8e4ee;
+  --accent:#1ea0dc; --accent-dark:#1580b3; --accent-fg:#ffffff;
+  --sun:#ffcd3c; --sun-fg:#3a2c00;
+  --nav:#1ea0dc; --nav2:#1680bd; --nav-fg:#ffffff;
+  --quiet:#25b872; --mid:#f2ad0d; --busy:#ec4d4d; --zone:#ec4d4d;
+  --font:"Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:22px; --shadow:0 8px 28px rgba(29,43,68,.18); --pop:0 3px 0 rgba(29,43,68,.14);
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121a2b; --panel:#1c263b; --fg:#eaf1fb; --muted:#9aa8bf; --line:#2c3954;
+  --accent:#43bdf0; --accent-dark:#2a9fd3; --accent-fg:#06202e;
+  --sun:#ffd451; --sun-fg:#2e2300;
+  --nav:#1785ba; --nav2:#0f5f8a; --nav-fg:#ffffff;
+  --shadow:0 8px 28px rgba(0,0,0,.45); --pop:0 3px 0 rgba(0,0,0,.35); color-scheme:dark;
+}}
+body{font-weight:600;letter-spacing:.005em}
+b,strong,.btn,#dist,.route .time{font-weight:800}
+
+/* Zachte, pastelachtige kaart */
+.leaflet-layer:not(.tiles-dark){filter:saturate(.72) brightness(1.04) contrast(.94)}
+.tiles-dark{filter:invert(1) hue-rotate(185deg) brightness(.95) contrast(.85) saturate(.8)}
+.leaflet-control-attribution{border-radius:10px 0 0 0;background:rgba(255,255,255,.75)!important}
+@media (prefers-color-scheme: dark){.leaflet-control-attribution{background:rgba(28,38,59,.8)!important;color:var(--muted)}.leaflet-control-attribution a{color:var(--accent)}}
+
+/* Zoekbalk: zwevende, ronde kaart */
+#search{border-radius:26px;padding:12px}
+.field{border-radius:16px;padding:0 12px;background:var(--bg)}
+.field .dot{width:12px;height:12px;box-shadow:0 0 0 3px var(--panel),0 0 0 5px currentColor;color:var(--line)}
+.field input{padding:12px 0;font-weight:700}
+.field input::placeholder{color:var(--muted);font-weight:600}
+.iconbtn{width:46px;height:46px;border-radius:50%;background:var(--bg);color:var(--accent-dark)}
+.via{background:var(--accent);border-radius:99px;font-weight:700}
+#suggest{border-radius:20px}
+#suggest li{border-radius:14px;font-weight:700}
+#suggest li small{font-weight:600}
+
+/* Onderpaneel: ronde bovenhoeken en een greepje */
+#sheet .card{border-radius:28px;padding:10px 16px 16px;position:relative}
+#sheet .card::before{content:"";display:block;width:44px;height:5px;border-radius:99px;background:var(--line);margin:0 auto 2px}
+.route{border-radius:18px;border:2px solid var(--line);background:var(--panel);padding:12px 14px;box-shadow:var(--pop)}
+.route.sel{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--panel))}
+.route .time{font-size:24px}
+.pill{border-radius:99px;padding:4px 10px}
+.bar{height:10px;border-radius:99px}
+.legend span::before{border-radius:50%}
+.modes{gap:8px}
+.mode{border-radius:18px;background:var(--bg);border-color:transparent;box-shadow:var(--pop)}
+.mode.on{background:var(--accent);border-color:var(--accent);box-shadow:0 3px 0 var(--accent-dark)}
+.more{color:var(--accent-dark);font-weight:800}
+.chip{border-radius:99px;background:var(--bg);border-color:transparent;font-weight:700}
+.chip.on{background:color-mix(in srgb,var(--zone) 12%,var(--panel));border-color:var(--zone)}
+.btn{border-radius:99px;padding:15px;background:var(--bg);box-shadow:var(--pop);transition:transform .08s}
+.btn.primary{background:var(--accent);color:var(--accent-fg);box-shadow:0 4px 0 var(--accent-dark)}
+.btn:active:not(:disabled),.mode:active,.route:active,.iconbtn:active{transform:translateY(2px)}
+@media (prefers-reduced-motion:reduce){.btn{transition:none}}
+
+/* Navigatie: blauwe zwevende instructiekaart */
+#banner{margin:calc(env(safe-area-inset-top,0px) + 8px) max(10px,env(safe-area-inset-right,0px)) 0 max(10px,env(safe-area-inset-left,0px));
+  padding:14px 18px 14px 14px;border-radius:26px;background:linear-gradient(160deg,var(--nav),var(--nav2));box-shadow:var(--shadow)}
+#turn{width:72px;height:72px;border-radius:22px;background:rgba(255,255,255,.18);display:grid;place-items:center}
+#turn svg{width:56px;height:56px}
+#dist{font-size:36px}
+#instr{font-size:20px;font-weight:700}
+#then{display:inline-block;justify-self:start;margin-top:4px;background:rgba(0,0,0,.18);border-radius:99px;padding:4px 12px;opacity:1}
+#then:empty{display:none}
+#eta{border-radius:24px}
+#eta b{font-size:26px}
+#navbottom .iconbtn{border-radius:50%;width:58px;min-height:58px;height:58px;align-self:center;color:var(--accent-dark)}
+#navbottom .stop{border-radius:99px;padding:0 22px;height:58px;align-self:center;box-shadow:0 4px 0 #b83232,var(--shadow)}
+#speed{width:64px;height:64px;border:5px solid var(--accent);font-size:22px}
+#cam{border-radius:99px;padding:8px 14px}
+#toast{border-radius:99px;font-weight:700;box-shadow:var(--shadow)}
+#pickbar,#newver{border-radius:24px}
+.me,.me svg{width:40px;height:40px}
+.me svg{filter:drop-shadow(0 3px 4px rgba(0,0,0,.3))}
