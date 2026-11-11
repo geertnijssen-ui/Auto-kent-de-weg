@@ -112,6 +112,10 @@ body.picking #sheet,body.picking #plan{display:none}
 #pickbar span{flex:1;font-size:16px}#pickbar .btn{flex:none;min-width:0;padding:12px 18px}
 #newver{position:fixed;z-index:660;top:calc(env(safe-area-inset-top,0px) + 10px);left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));max-width:560px;margin:0 auto;padding:10px 12px;display:flex;align-items:center;gap:10px}
 #newver span{flex:1}#newver .btn{flex:none;min-width:0;padding:10px 16px}
+#privDlg{position:fixed;z-index:680;top:calc(env(safe-area-inset-top,0px) + 10px);left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));max-width:560px;margin:0 auto;padding:14px;display:grid;gap:8px;max-height:calc(100dvh - 20px);overflow:auto}
+#privDlg h2{font-size:18px;margin:0}
+#privDlg p{margin:0}
+#privText{width:100%;min-height:200px;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px;resize:vertical}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 90px);z-index:700;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:15px;max-width:90vw;text-align:center}
 .me{width:34px;height:34px}
 .me svg{width:34px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));transition:transform .4s}
@@ -153,6 +157,8 @@ body.picking #sheet,body.picking #plan{display:none}
       <button class="chip" id="zoneMode">+ Drukke plek vermijden</button>
       <span class="small" id="zoneInfo"></span>
       <button class="chip" id="zoneClear" hidden>Wis plekken</button>
+      <button class="chip" id="privOn" aria-pressed="true" hidden>Privé-plekken ontwijken: aan</button>
+      <button class="chip" id="privEdit">Privé-lijst…</button>
       <button class="chip" id="gravel" aria-pressed="true">Grind- en halfverharde wegen: aan</button>
       <button class="chip" id="update">App bijwerken</button>
       <span class="small" id="versionTxt"></span>
@@ -181,13 +187,20 @@ body.picking #sheet,body.picking #plan{display:none}
   </div>
 </div>
 <div id="pickbar" class="card" hidden><span id="pickTxt"></span><button class="btn primary" id="pickDone">Klaar</button></div>
+<div id="privDlg" class="card" hidden role="dialog" aria-modal="true" aria-labelledby="privTitle">
+  <h2 id="privTitle">Privé-plekken</h2>
+  <p class="small">Straten, wegen en snelwegcomplexen die je liever niet neemt, met de gemeente als kopje (bv. <code>--- GENK ---</code> en daaronder <code>• Noordlaan</code>). Wijzigingen worden op dit toestel bewaard. De route vermijdt deze plekken als het kan, maar rijdt er toch langs als er geen redelijke andere weg is.</p>
+  <textarea id="privText" spellcheck="false" autocomplete="off" aria-label="Lijst met privé-plekken"></textarea>
+  <div class="small" id="privInfo"></div>
+  <div class="actions"><button class="btn" id="privReset">Standaardlijst</button><button class="btn" id="privCancel">Annuleer</button><button class="btn primary" id="privSave">Bewaar</button></div>
+</div>
 <div id="newver" class="card" hidden><span>Er is een nieuwe versie van de app.</span><button class="btn primary" id="newverBtn">Bijwerken</button></div>
 <div id="toast" hidden></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.11'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.12'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -267,6 +280,7 @@ const state = {
   showAll:false,
   gravel: store.get('gravel', true),
   vias: store.get('vias', []),
+  privOn: store.get('privOn', true),
 };
 let viaMarkers=[];
 
@@ -417,6 +431,251 @@ map.on('click', e=>{
 function gravelChip(){ const b=$('#gravel'); b.classList.toggle('on',false); b.setAttribute('aria-pressed',state.gravel); b.textContent='Grind- en halfverharde wegen: '+(state.gravel?'aan':'uit'); }
 gravelChip();
 $('#gravel').addEventListener('click',()=>{ state.gravel=!state.gravel; store.set('gravel',state.gravel); gravelChip(); plan(); });
+/* ---------- privé-plekken (zacht vermijden) ---------- */
+// Standaardlijst hieronder; via "Meer opties → Privé-lijst…" kan je hem op het toestel aanpassen (dan wordt die versie gebruikt).
+// Een routestuk telt als privé als de straatnaam (of het wegnummer) overeenkomt én het in de juiste gemeente ligt,
+// of als het op een genoemd snelwegcomplex of snelwegstuk ligt. Zulke routes krijgen strafpunten en de app zoekt
+// er een omweg omheen; als er geen redelijke andere weg is, wordt er toch langs gereden.
+const PRIV_DEFAULT = `
+--- 1. HASSELT ---
+• R71 Boerenkrijgsingel
+• R71 Prins Bisschopssingel
+• R71 Hendrik Van Veldekesingel
+• R71 Herkenrodesingel
+• R71 Gouverneur Verwilghensingel
+• R71 Gouverneur Roppesingel
+• N74 Kempische Steenweg
+• N75 Genkersteenweg
+• N80 Sint-Truidersteenweg / Hasselt-Sint-Lambrechts-Herk
+• N2 Kuringersteenweg
+• N2 Diestersteenweg
+• N729 Zolderse Kiezel
+• R70 Martelarenlaan
+
+--- 2. DIEPENBEEK ---
+• N76 Nieuwstraat / Westerring
+• N702 Koning Boudewijnlaan
+• Universiteitslaan
+• Grendelbaan
+
+--- 3. GENK ---
+• N744 Wiemesmeerstraat
+• N726 Wagemanskeel
+• N744 André Dumontlaan
+• N744 Maaseikerbaan
+• Boxbergstraat
+• Noordlaan
+• Tennislaan
+• Koerweg
+• Guillaume Lambertlaan
+• Emiel Van Dorenlaan
+• Weg Naar As
+• Rozenkranslaan
+• Bergbeemdstraat
+• Hoogstraat
+• Kolderbosstraat
+• Camerlo
+• Sledderloweg
+• Fletersdel
+• Torenlaan
+• N76 Westerring
+• N76 Hoevenzavellaan
+• N76 Oosterring
+• N702 Henry Fordlaan
+• Mosselerlaan
+
+--- 4. ZUTENDAAL ---
+• N77 Trichterheideweg
+• N77 Genkersteenweg
+• N730 Zuiderring
+• Diepenbekerweg
+• Kruisstraat
+• Trichterweg
+• Daalstraat
+
+--- 5. BILZEN & HOESELT ---
+• N700 Alden Biesensingel
+• N730 Tongersestraat
+• N730 Bilzersteenweg
+• N76 Spoorwegstraat
+• N76 Hasseltsestraat
+• N237 Bilzen-Hoeselt
+
+--- 6. REGIO (AS, LANAKEN, ALKEN) ---
+• As: N76 Steenweg / Weg naar As
+• Lanaken: N77 Maastrichterweg
+• Lanaken: N77 Brugstraat
+• Lanaken: N78 Staatsbaan
+• Alken: N80 Expresweg Hasselt-Sint-Truiden
+
+--- 7. AUTOSNELWEGEN ---
+• E314: Complex 31 (Genk-Centrum)
+• E314: Complex 32 (Genk-Oost / Zutendaal)
+• E314: Parkeerterrein Postert
+• E313: Knooppunt Lummen tot Complex 30 (Diepenbeek)
+• E313: Complex 31 (Bilzen/Hoeselt)
+`.trim();
+const PRIV_MIN_KM = 0.03, PRIV_MAX_BLOCKERS = 110;
+const normName = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const spaced = s => ' '+String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' ';
+// Gemeenten (ruwe kaders [zuid, west, noord, oost]); een straatnaam telt alleen binnen de gemeente(n) waaronder hij staat.
+const TOWNS = {
+  'hasselt':[50.87,5.24,50.98,5.42], 'diepenbeek':[50.88,5.37,50.93,5.47], 'genk':[50.92,5.41,51.03,5.58],
+  'zutendaal':[50.90,5.53,50.97,5.63], 'bilzen':[50.84,5.44,50.92,5.58], 'hoeselt':[50.82,5.43,50.87,5.53],
+  'as':[50.99,5.54,51.04,5.62], 'lanaken':[50.86,5.60,50.95,5.71], 'alken':[50.84,5.24,50.91,5.36],
+  'sint lambrechts herk':[50.86,5.25,50.91,5.33], 'sint truiden':[50.76,5.12,50.86,5.25], 'lummen':[50.95,5.13,51.03,5.24],
+  'zonhoven':[50.96,5.32,51.03,5.42], 'houthalen helchteren':[51.00,5.33,51.10,5.48], 'maasmechelen':[50.92,5.62,51.03,5.73],
+  'tongeren':[50.74,5.38,50.82,5.53], 'kortessem':[50.84,5.33,50.89,5.43], 'herk de stad':[50.91,5.10,50.97,5.20],
+  'beringen':[51.02,5.17,51.10,5.30], 'heusden zolder':[51.00,5.25,51.07,5.35], 'opglabbeek':[51.01,5.53,51.06,5.62],
+  'oudsbergen':[51.02,5.52,51.14,5.66], 'dilsen stokkem':[51.00,5.66,51.06,5.78], 'riemst':[50.78,5.55,50.84,5.65],
+  'maastricht':[50.82,5.64,50.89,5.73],
+};
+const TOWN_KEYS = Object.keys(TOWNS).sort((a,b)=>b.length-a.length);
+const MOTORWAYS = {e314:['e314','a2'], e313:['e313','a13'], e40:['e40','a3'], e25:['e25','a25'], e34:['e34','a21'], a2:['e314','a2'], a13:['e313','a13']};
+// Ruwe ligging van complexen, alleen om het juiste punt in OpenStreetMap te kiezen (of als terugval zonder verbinding).
+const MW_HINT = {'e314-31':[50.987,5.497], 'e314-32':[50.968,5.565], 'e313-30':[50.915,5.425], 'e313-31':[50.885,5.490],
+  'knoop-lummen':[50.995,5.215], 'place-postert':[50.952,5.600]};
+const townsIn = txt => { let t=spaced(txt); const out=[]; for(const k of TOWN_KEYS){ if(t.includes(' '+k+' ')){ out.push(k); t=t.replace(' '+k+' ',' '); } } return out; };
+// "Hasselt-Sint-Lambrechts-Herk", "Bilzen-Hoeselt": alleen gemeenten. "Expresweg Hasselt-Sint-Truiden": beschrijving
+// van een stuk tussen twee gemeenten, dan geeft dat [] terug (wegnummer telt binnen de gemeente van het kopje).
+function onlyTowns(txt){
+  let t=spaced(txt); const gen=/^ (expresweg|autoweg|snelweg|weg|verbindingsweg) /.test(t); t=t.replace(/^ \S+ /,m=>gen?' ':m);
+  const found=[]; let changed=true;
+  while(changed){ changed=false; for(const k of TOWN_KEYS){ if(t.startsWith(' '+k+' ')){ found.push(k); t=t.slice(k.length+1); changed=true; break; } } }
+  return t.trim()==='' && found.length ? (gen ? [] : found) : null;
+}
+function parseMwPoint(mw, txt){
+  let m=txt.match(/complex\s*(\d+)\s*(?:\(([^)]*)\))?/i); if(m) return {mw, ref:m[1], label:m[2]||'', key:mw+'-'+m[1]};
+  m=txt.match(/knooppunt\s+(.+?)\s*$/i); if(m) return {mw, knoop:normName(m[1]), key:'knoop-'+normName(m[1])};
+  const name=txt.replace(/\(.*?\)/g,'').replace(/^(parkeerterrein|parking|rustplaats|tankstation|carpoolparking)\s+/i,'').trim();
+  return name ? {mw, place:normName(name), key:'place-'+normName(name)} : null;
+}
+function parsePriv(text){
+  const items=[], bad=[]; let region=[];
+  for(const raw of String(text||'').split(/\r?\n/)){
+    let line=raw.trim();
+    if(!line || /^[=\-–—_*~ ]+$/.test(line)) continue;
+    const head=line.match(/^[-=–—]{2,}\s*(?:\d+\s*[.)]\s*)?(.+?)\s*[-=–—]{2,}$/);
+    if(head){ region=townsIn(head[1]); continue; }
+    const bullet=/^[•*·▪◦–-]\s*/.test(line);
+    line=line.replace(/^[•*·▪◦–-]\s*/,'').trim();
+    if(!bullet && line===line.toUpperCase() && /[A-Z]{3}/.test(line) && !/\d/.test(line)) continue; // titelregel
+    let regs=region.slice();
+    const pre=line.match(/^([^:]{1,40}):\s*(.+)$/);
+    if(pre){
+      const mw=MOTORWAYS[normName(pre[1])]?normName(pre[1]):null;
+      if(mw){
+        const key=MOTORWAYS[mw][0];
+        const parts=pre[2].split(/\s+tot\s+/i);
+        if(parts.length===2){ const a=parseMwPoint(key,parts[0]), b=parseMwPoint(key,parts[1]); if(a&&b){ items.push({kind:'mwsection', mw:key, a, b, label:line}); continue; } }
+        const pt=parseMwPoint(key,pre[2]); if(pt){ items.push({kind:'mwpoint', mw:key, pt, label:line}); continue; }
+        bad.push(line); continue;
+      }
+      const t=townsIn(pre[1]); if(t.length){ regs=t; line=pre[2]; }
+    }
+    const alts=line.split(/\s*\/\s*/).filter(Boolean), streets=[];
+    for(const alt of alts){
+      const m=alt.match(/^([NR]\s?\d+[a-z]?)(?:\s+(.*))?$/i);
+      const ref=m?normName(m[1]):null, rest=(m?m[2]||'':alt).trim();
+      const tw=rest?onlyTowns(rest):null;
+      if(tw){ regs=[...new Set(regs.concat(tw))]; if(ref) streets.push({ref}); continue; }
+      if(rest) streets.push({name:normName(rest)});
+      if(ref && (!rest || /^(steenweg|baan|weg|ring)$/.test(normName(rest)))) streets.push({ref}); // te algemene naam: ook op wegnummer
+    }
+    if(!streets.length){ bad.push(line); continue; }
+    for(const st of streets){
+      if(st.name){ if(!regs.length){ bad.push(line+' (geen gemeente)'); continue; } items.push({kind:'street', name:st.name, regs, label:line}); }
+      else items.push({kind:'ref', ref:st.ref, regs, label:line});
+    }
+  }
+  return {items, bad};
+}
+const priv = {text: store.get('privText', null) ?? PRIV_DEFAULT, items:[], bad:[], pts: store.get('privPts', {})};
+function loadPriv(){ const p=parsePriv(priv.text); priv.items=p.items; priv.bad=p.bad; }
+loadPriv();
+const privActive = () => state.privOn && priv.items.length>0;
+const inBox = (p,b) => p[0]>=b[0]-0.005 && p[0]<=b[2]+0.005 && p[1]>=b[1]-0.005 && p[1]<=b[3]+0.005;
+const inRegs = (p,regs) => regs.some(k=>TOWNS[k] && inBox(p,TOWNS[k]));
+const onMw = (names,mw) => names.some(n=>MOTORWAYS[mw].includes(n));
+const ptOf = pt => pt && (priv.pts[pt.key] || MW_HINT[pt.key] || null);
+function privHit(e, p){
+  const names=(e.names||[]).map(normName);
+  for(const it of priv.items){
+    if(it.kind==='street'){ if(names.includes(it.name) && inRegs(p,it.regs)) return true; }
+    else if(it.kind==='ref'){ if(names.includes(it.ref) && (!it.regs.length || inRegs(p,it.regs))) return true; }
+    else if(it.kind==='mwpoint'){
+      const c=ptOf(it.pt); if(!c) continue; const d=hav(p,c);
+      if(it.pt.place){ if(d<=500 && e.use!=='road') return true; }
+      else if(d<=900 && (onMw(names,it.mw) || e.use==='ramp')) return true;
+    }
+    else if(it.kind==='mwsection'){
+      const a=ptOf(it.a), b=ptOf(it.b); if(!a||!b) continue;
+      if(onMw(names,it.mw) && projSeg(p,a,b).d<=700) return true;
+      if(e.use==='ramp' && hav(p,b)<=700) return true;
+    }
+  }
+  return false;
+}
+function markPriv(r){
+  r.privKm=0; if(!r.edges || !priv.items.length) return;
+  const s=r.shape, a=s[0], z=s[s.length-1];
+  r.edges.forEach(e=>{
+    const p=s[Math.floor((e.begin_shape_index+e.end_shape_index)/2)];
+    e.priv = !!p && hav(p,a)>300 && hav(p,z)>300 && privHit(e,p); // vlak bij start of bestemming is niet te vermijden
+    if(e.priv) r.privKm+=e.length;
+  });
+}
+const privPenalty = r => privActive() && r.privKm>PRIV_MIN_KM ? 30 + 20*r.privKm : 0;
+function privBlockersFor(r, existing){
+  const s=r.shape, a=s[0], z=s[s.length-1];
+  return (r.edges||[]).filter(e=>e.priv).sort((x,y)=>y.length-x.length)
+    .map(e=>s[Math.floor((e.begin_shape_index+e.end_shape_index)/2)])
+    .filter(p=>p && hav(p,a)>300 && hav(p,z)>300 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<150) && !existing.some(q=>hav(p,q)<30))
+    .slice(0,60);
+}
+// Snelwegcomplexen en parkings precies opzoeken in OpenStreetMap (één keer, daarna bewaard op het toestel).
+async function resolvePriv(){
+  const need=[]; priv.items.forEach(it=>{ if(it.kind==='mwpoint') need.push(it.pt); if(it.kind==='mwsection') need.push(it.a,it.b); });
+  const todo=need.filter(pt=>!priv.pts[pt.key]); if(!todo.length) return;
+  const bb='50.70,5.05,51.15,5.80';
+  const q=`[out:json][timeout:25];(node["highway"="motorway_junction"](${bb});nwr["highway"~"^(rest_area|services)$"](${bb});nwr["amenity"="parking"]["name"](${bb}););out center tags;`;
+  let els=[];
+  try{ const res=await fetch(OVERPASS,{method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}}); els=(await res.json()).elements||[]; }catch(e){ return; }
+  const pos = x => x.lat!=null ? [x.lat,x.lon] : x.center ? [x.center.lat,x.center.lon] : null;
+  const nearest = (cands, hint) => { if(!cands.length) return null; if(!hint) return cands.length===1 ? cands[0] : null; let best=null, bd=8000; for(const c of cands){ const d=hav(pos(c),hint); if(d<bd){ bd=d; best=c; } } return best; };
+  for(const pt of todo){
+    const hint=MW_HINT[pt.key]; let cands=[];
+    if(pt.ref){ cands=els.filter(x=>x.tags?.highway==='motorway_junction' && x.tags.ref===pt.ref);
+      if(!hint && pt.label){ const lab=normName(pt.label.split(/[\/,]/)[0]); const byName=cands.filter(x=>normName(x.tags.name).includes(lab)); if(byName.length) cands=byName; } }
+    else if(pt.knoop) cands=els.filter(x=>x.tags?.highway==='motorway_junction' && normName(x.tags.name).includes(pt.knoop));
+    else if(pt.place) cands=els.filter(x=>normName(x.tags?.name).includes(pt.place));
+    const hit=nearest(cands, hint); const p=hit&&pos(hit);
+    if(p) priv.pts[pt.key]=p;
+  }
+  store.set('privPts', priv.pts);
+}
+function unresolvedPriv(){ const out=[]; priv.items.forEach(it=>{ if(it.kind==='mwpoint' && !ptOf(it.pt)) out.push(it.label); if(it.kind==='mwsection' && (!ptOf(it.a)||!ptOf(it.b))) out.push(it.label); }); return out; }
+function privSummary(p){
+  const n={street:0, ref:0, mw:0}; p.items.forEach(it=>{ if(it.kind==='street') n.street++; else if(it.kind==='ref') n.ref++; else n.mw++; });
+  let t = p.items.length ? `${n.street} straten, ${n.ref} wegnummers en ${n.mw} snelwegstukken herkend.` : 'Nog geen plekken herkend.';
+  if(p.bad.length) t+=' Niet herkend: '+p.bad.slice(0,5).join('; ')+(p.bad.length>5?' …':'');
+  return t;
+}
+function privChip(){
+  const b=$('#privOn'); b.hidden=!priv.items.length; b.setAttribute('aria-pressed',state.privOn);
+  b.textContent='Privé-plekken ontwijken: '+(state.privOn?'aan':'uit')+' ('+priv.items.length+')';
+}
+$('#privOn').addEventListener('click',()=>{ state.privOn=!state.privOn; store.set('privOn',state.privOn); privChip(); plan(); });
+$('#privEdit').addEventListener('click',()=>{ $('#privText').value=priv.text; $('#privInfo').textContent=privSummary(priv); $('#privDlg').hidden=false; });
+$('#privText').addEventListener('input',()=>{ $('#privInfo').textContent=privSummary(parsePriv($('#privText').value)); });
+$('#privReset').addEventListener('click',()=>{ $('#privText').value=PRIV_DEFAULT; $('#privInfo').textContent=privSummary(parsePriv(PRIV_DEFAULT)); });
+$('#privCancel').addEventListener('click',()=>{ $('#privDlg').hidden=true; });
+$('#privSave').addEventListener('click', async ()=>{
+  priv.text=$('#privText').value; store.set('privText',priv.text); loadPriv(); $('#privDlg').hidden=true; privChip();
+  toast(priv.items.length ? priv.items.length+' privé-plekken bewaard.' : 'Privé-lijst is leeg.');
+  await resolvePriv(); const un=unresolvedPriv(); if(un.length) toast('Niet gevonden op de kaart: '+un.join('; '), 6000);
+  plan();
+});
 /* ---------- route plannen ---------- */
 // Gewicht per wegklasse: hoe "druk" een kilometer op dit type weg aanvoelt.
 const BUSY = {motorway:10, trunk:9, primary:7, secondary:4, tertiary:1.6, unclassified:0.5, residential:0.3, service_other:0.6};
@@ -451,7 +710,7 @@ function routeBody(from, to, v, heading, blockers=[], vias=state.vias){
 async function analyse(r){
   try{
     const d = await api('/trace_attributes', {encoded_polyline:r.shapeStr, shape_match:'edge_walk', costing:'auto',
-      filters:{attributes:['edge.road_class','edge.names','edge.length','edge.surface','edge.unpaved','edge.begin_shape_index','edge.end_shape_index'], action:'include'}});
+      filters:{attributes:['edge.road_class','edge.names','edge.length','edge.surface','edge.unpaved','edge.begin_shape_index','edge.end_shape_index','edge.use'], action:'include'}});
     r.edges = d.edges||[];
   }catch(e){ r.edges=null; }
   const tot = {}; let km=0, busy=0, unpaved=0;
@@ -460,6 +719,7 @@ async function analyse(r){
   (r.edges||[]).forEach(e=>{ if((e.names||[]).some(n=>typeof n==='string' && /^[NR]\s?\d+/i.test(n.trim())) && (BUSY[e.road_class]??1)<4){ e.road_class='secondary'; e.nroad=true; } });
   (r.edges||[]).forEach(e=>{ const rc=e.road_class||'service_other'; tot[rc]=(tot[rc]||0)+e.length; km+=e.length; busy+=e.length*(BUSY[rc]??1); if(e.unpaved) unpaved+=e.length; if(BAD_SURFACE.includes(e.surface)){ rough+=e.length; busy+=e.length*6; } });
   r.classes=tot; r.unpavedKm=unpaved; r.roughKm=rough;
+  markPriv(r);
   r.quiet = km ? Math.max(0, Math.min(100, Math.round(100*(1 - (busy/km)/7)))) : null;
 }
 let planSeq=0;
@@ -489,13 +749,38 @@ async function plan(opts={}){
   }
   found.splice(8);
   for(const r of found){ await analyse(r); if(seq!==planSeq) return; }
+  // Privé-plekken: blokkeer de stukken van de lijst op de beste routes en vraag opnieuw (zacht: lukt het niet, dan blijft de oude route over).
+  let privBlk=[];
+  if(privActive()){
+    const touched=found.filter(r=>r.privKm>PRIV_MIN_KM);
+    const pb=[...new Set([touched.slice().sort((a,b)=>(b.quiet??0)-(a.quiet??0))[0], touched.slice().sort((a,b)=>a.km-b.km)[0]])].filter(Boolean);
+    if(opts.quick) pb.splice(1);
+    if(pb.length) setStatus(opts.reroute ? 'Nieuwe route berekenen…' : 'Privé-plekken omzeilen…');
+    for(let base of pb){
+      const v={...(VARIANTS.find(x=>x.name===base.variant)||VARIANTS[0]), alts:0};
+      for(let round=0; round<(opts.quick?1:3); round++){
+        const nb=privBlockersFor(base, privBlk);
+        if(!nb.length) break;
+        privBlk=privBlk.concat(nb).slice(0,PRIV_MAX_BLOCKERS);
+        try{
+          const d=await api('/route', routeBody(from,to,v,opts.heading,privBlk,opts.vias||state.vias));
+          if(seq!==planSeq) return;
+          const r=mkRoute(d.trip, 'om privé heen'); await analyse(r);
+          if(seq!==planSeq) return;
+          if(!addUnique(found, r)) break;
+          base=r; if(r.privKm<=PRIV_MIN_KM) break;
+        }catch(e){ break; }
+      }
+    }
+  }
   // Wegduwen: blokkeer de grote wegen op de rustigste route en vraag opnieuw, zodat hij door wijken en binnenwegen moet.
   setStatus(opts.reroute ? 'Nieuwe route berekenen…' : 'Grote wegen wegduwen naar wijkjes en binnenwegen…');
   const withEdges=found.filter(r=>r.edges);
-  const bases=[...new Set([withEdges.slice().sort((a,b)=>(b.quiet??0)-(a.quiet??0))[0], withEdges.slice().sort((a,b)=>a.km-b.km)[0]])].filter(Boolean);
+  const byPriv=(a,b)=>privActive() ? (a.privKm>PRIV_MIN_KM)-(b.privKm>PRIV_MIN_KM) : 0;
+  const bases=[...new Set([withEdges.slice().sort((a,b)=>byPriv(a,b)||(b.quiet??0)-(a.quiet??0))[0], withEdges.slice().sort((a,b)=>byPriv(a,b)||a.km-b.km)[0]])].filter(Boolean);
   if(opts.quick) bases.splice(1);
   for(let base of bases){
-  let blockers=[];
+  let blockers=privBlk.slice(); // privé-blokkades blijven staan, zodat het wegduwen niet terug langs een privé-plek gaat
   const rounds = opts.quick ? [['motorway','trunk','primary','secondary']] : [['motorway','trunk','primary','secondary'],['motorway','trunk','primary','secondary','tertiary'],['motorway','trunk','primary','secondary','tertiary']];
   for(const [ri,cls] of rounds.entries()){
     if(!base) break;
@@ -507,6 +792,7 @@ async function plan(opts={}){
       if(seq!==planSeq) return;
       const r=mkRoute(d.trip, ri?'binnenbaantjes':'wijkjes'); await analyse(r);
       if(seq!==planSeq) return;
+      if(privActive() && r.privKm>PRIV_MIN_KM+(base.privKm||0)) break; // niet ruilen voor een route met meer privé-weg
       if(addUnique(found, r)) base=r; else break;
     }catch(e){ break; }
   }
@@ -572,7 +858,7 @@ const MODES = {
 };
 function rank(){
   const rs=state.routes; const fastest=Math.min(...rs.map(r=>r.time)), shortest=Math.min(...rs.map(r=>r.km)); const M=MODES[state.mode]||MODES.kortgroen; const limit=fastest*(1+M.limit);
-  rs.forEach(r=>{ r.ok = r.time<=limit+1 && !(r.roughKm>0.2); r.score = M.score(r,fastest,shortest); });
+  rs.forEach(r=>{ r.ok = r.time<=limit+1 && !(r.roughKm>0.2); r.score = M.score(r,fastest,shortest) - privPenalty(r); });
   rs.sort((a,b)=> (b.ok-a.ok) || (b.score-a.score) || (a.time-b.time));
   state.sel=0;
 }
@@ -583,6 +869,7 @@ function drawRoute(r, sel){
     r.edges.forEach(e=>{
       const seg=r.shape.slice(e.begin_shape_index, e.end_shape_index+1);
       if(seg.length>1) L.polyline(seg,{color: sel?CLASS_HEX(e.road_class):'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
+      if(sel && e.priv && privActive() && seg.length>1) L.polyline(seg,{color:'#7b3fe4', weight:4, dashArray:'6 8', opacity:1, interactive:false}).addTo(routeLayer);
     });
   } else L.polyline(r.shape,{color: sel?'#1f7a4d':'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
 }
@@ -603,7 +890,7 @@ function renderRoutes(fit){
     const segs = Object.entries(r.classes||{}).sort((a,b)=>(BUSY[b[0]]??1)-(BUSY[a[0]]??1)).map(([rc,km])=>`<i style="width:${(km/r.km*100).toFixed(1)}%;background:${CLASS_COLOR(rc)}"></i>`).join('');
     const bigKm = Object.entries(r.classes||{}).filter(([rc])=>(BUSY[rc]??1)>=4).reduce((s,[,k])=>s+k,0);
     b.innerHTML=`<div class="top"><span class="time">${fmtTime(r.time)}</span><span class="pill" style="background:${pc}">${pt}</span></div>
-      <div class="meta">${r.km.toFixed(1).replace('.',',')} km${extra}${r.edges? ' · '+bigKm.toFixed(1).replace('.',',')+' km grote weg':''}${r.unpavedKm>0.05?' · '+r.unpavedKm.toFixed(1).replace('.',',')+' km onverhard':''}${r.roughKm>0.2?' · zandweg':''}${r.cams?.length?' · '+r.cams.length+' flitspa'+(r.cams.length>1?'len':'al'):''}${!r.ok&&!(r.roughKm>0.2)?' · te veel omweg':''}</div>
+      <div class="meta">${r.km.toFixed(1).replace('.',',')} km${extra}${r.edges? ' · '+bigKm.toFixed(1).replace('.',',')+' km grote weg':''}${r.unpavedKm>0.05?' · '+r.unpavedKm.toFixed(1).replace('.',',')+' km onverhard':''}${r.roughKm>0.2?' · zandweg':''}${privActive()&&r.privKm>PRIV_MIN_KM?' · '+r.privKm.toFixed(1).replace('.',',')+' km langs privé-plek':''}${r.cams?.length?' · '+r.cams.length+' flitspa'+(r.cams.length>1?'len':'al'):''}${!r.ok&&!(r.roughKm>0.2)?' · te veel omweg':''}</div>
       ${segs?`<div class="bar">${segs}</div>`:''}`;
     b.addEventListener('click',()=>{ state.sel=i; renderRoutes(false); });
     box.appendChild(b);
@@ -751,7 +1038,7 @@ document.addEventListener('visibilitychange', async ()=>{ if(nav.active && docum
 
 /* ---------- opstarten ---------- */
 if(state.to){ $('#to').value=state.to.label; }
-updateMarkers(); drawZones();
+updateMarkers(); drawZones(); privChip(); resolvePriv();
 startWatch();
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 
