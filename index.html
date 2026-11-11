@@ -185,7 +185,7 @@ body.picking #sheet,body.picking #plan{display:none}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.8'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.9'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const $ = s => document.querySelector(s);
@@ -434,9 +434,9 @@ function routeBody(from, to, v, heading, blockers=[], vias=state.vias){
   const loc0 = {lat:from.lat, lon:from.lon};
   if(heading!=null && !isNaN(heading)){ loc0.heading=Math.round(heading); loc0.heading_tolerance=60; }
   // Onverhard mag als de weg voor auto's open is (OSM-toegang) en goed berijdbaar is; zand/aarde wordt verderop weggeduwd.
-  const auto = {use_highways:v.use_highways, use_tolls:0, use_tracks:0, exclude_unpaved:!state.gravel, use_living_streets:0.3, use_distance:v.use_distance};
+  const auto = {use_highways:v.use_highways, use_tolls:0, use_tracks:0, exclude_unpaved:!state.gravel, use_living_streets:0.3, use_distance:v.use_distance, service_penalty:5, service_factor:1};
   if(v.top_speed) auto.top_speed=v.top_speed;
-  const body = {locations:[loc0, ...vias.map(p=>({lat:p.lat, lon:p.lon, type:'through'})), {lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
+  const body = {locations:[loc0, ...vias.map(p=>({lat:p.lat, lon:p.lon, type:'through', search_filter:{max_road_class:'unclassified'}})) /* via-punt op een klein weggetje laten vastklikken, niet op de grote weg */, {lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
   if(v.alts && !vias.length) body.alternates=v.alts; // alternatieven kan alleen zonder via-punten
   // eigen vermijd-plekken eerst, daarna zoveel 'blokkades' op grote wegen als binnen de limiet past
   const polys=[]; let budget=MAX_POLY_M;
@@ -492,10 +492,10 @@ async function plan(opts={}){
   if(opts.quick) bases.splice(1);
   for(let base of bases){
   let blockers=[];
-  const rounds = opts.quick ? [['motorway','trunk','primary','secondary']] : [['motorway','trunk','primary','secondary'],['motorway','trunk','primary','secondary','tertiary']];
+  const rounds = opts.quick ? [['motorway','trunk','primary','secondary']] : [['motorway','trunk','primary','secondary'],['motorway','trunk','primary','secondary','tertiary'],['motorway','trunk','primary','secondary','tertiary']];
   for(const [ri,cls] of rounds.entries()){
     if(!base) break;
-    const nb=blockersFor(base, cls, ri?250:120, blockers);
+    const nb=blockersFor(base, cls, [120,200,60][ri], blockers);
     if(!nb.length) continue;
     blockers=blockers.concat(nb);
     try{
@@ -520,7 +520,7 @@ function blockersFor(r, classes, minM, existing){
   return (r.edges||[]).filter(e=>(classes.includes(e.road_class) && e.length*1000>=minM) || (BAD_SURFACE.includes(e.surface) && e.length*1000>=30))
     .sort((x,y)=>y.length-x.length)
     .map(e=>s[Math.floor((e.begin_shape_index+e.end_shape_index)/2)])
-    .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<500) && !existing.some(q=>hav(p,q)<30))
+    .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<150) && !existing.some(q=>hav(p,q)<30))
     .slice(0,60);
 }
 // Drie keuzes: kort & groen weegt afstand, groenst weegt bijna alleen rust, sneller weegt reistijd.
