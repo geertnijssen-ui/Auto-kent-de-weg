@@ -7,6 +7,7 @@ Navigatie-app die zo veel mogelijk binnendoor rijdt: grote en drukke wegen worde
 - **Routes:** de gratis publieke [Valhalla](https://valhalla.github.io/valhalla/)-server. Per rit worden drie profielen gevraagd (rustig, binnendoor, landweggetjes) plus alternatieven. Daarna "duwt" de app de route van grote wegen af: midden op lange stukken provinciale of grote weg worden kleine blokkades gezet en wordt opnieuw gerekend, tot hij door wijken en binnenbaantjes gaat (binnen je omweg-grens). Toegangsregels uit OpenStreetMap (bv. alleen landbouwverkeer) worden altijd gerespecteerd.
 - **Rustscore:** van elke route wordt per stuk weg de wegklasse opgehaald. Kilometers op snelweg, autoweg en provinciale weg tellen zwaar, dorpsstraten en landwegen licht. Zo krijgt elke route een percentage "rustig", en de kaart kleurt groen, oranje of rood.
 - **Schuifje:** bepaalt hoeveel extra reistijd je wilt accepteren voor een rustigere route (5% tot 60%).
+- **Rijden via:** typ een dorp of straat bij "Rijden via…" of tik "+ Via-punt op kaart" en tik op een weg. De route gaat daar dan langs (bv. Lanaken → Rekem → Opgrimbie → Zutendaal). Tik op een blauw label om het weg te halen.
 - **Drukke plek vermijden:** tik op "+ Drukke plek vermijden" en tik op de kaart. Die plek wordt voortaan omzeild (wordt op je toestel bewaard).
 - **Navigeren:** GPS, gesproken Nederlandse aanwijzingen, automatisch herberekenen als je van de route afgaat, scherm blijft aan.
 - **Demo-rit:** rijdt de route virtueel na om alles thuis te testen. Tik op de snelheid om sneller af te spelen.

@@ -44,6 +44,10 @@ button{cursor:pointer}
 .field{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:0 10px;min-width:0}
 .field .dot{width:10px;height:10px;border-radius:50%;flex:none}
 .field input{border:0;background:transparent;padding:11px 0;width:100%;min-width:0;outline:none;font-size:16px}
+.vias{display:flex;flex-wrap:wrap;gap:6px}
+.via{display:inline-flex;align-items:center;gap:4px;background:#1a73e8;color:#fff;border:0;border-radius:99px;padding:5px 6px 5px 10px;font-size:14px;max-width:100%}
+.via span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+.via b{font-size:18px;line-height:1;padding:0 4px}
 .field button.clear{border:0;background:none;color:var(--muted);font-size:20px;padding:4px}
 .side{display:flex;flex-direction:column;gap:6px}
 .iconbtn{width:44px;height:44px;border-radius:10px;border:0;background:var(--bg);display:grid;place-items:center}
@@ -111,6 +115,8 @@ button{cursor:pointer}
     <div class="fields">
       <div class="field"><span class="dot" style="background:var(--accent)"></span><input id="from" placeholder="Mijn locatie" autocomplete="off" aria-label="Van"><button class="clear" data-for="from" aria-label="Wis van">×</button></div>
       <div class="field"><span class="dot" style="background:var(--busy)"></span><input id="to" placeholder="Waar wil je heen?" autocomplete="off" aria-label="Naar"><button class="clear" data-for="to" aria-label="Wis naar">×</button></div>
+      <div class="field"><span class="dot" style="background:#1a73e8"></span><input id="via" placeholder="Rijden via… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
+      <div id="vias" class="vias" hidden></div>
     </div>
     <div class="side">
       <button class="iconbtn" id="swap" aria-label="Wissel van en naar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4v16M7 4 3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg></button>
@@ -130,6 +136,7 @@ button{cursor:pointer}
       <input type="range" id="balance" min="0" max="100" value="30">
     </div>
     <div class="zones">
+      <button class="chip" id="viaMode">+ Via-punt op kaart</button>
       <button class="chip" id="zoneMode">+ Drukke plek vermijden</button>
       <span class="small" id="zoneInfo"></span>
       <button class="chip" id="zoneClear" hidden>Wis plekken</button>
@@ -238,14 +245,23 @@ const state = {
   routes:[], sel:0,
   balance: store.get('balance2', 30),
   gravel: store.get('gravel', true),
+  vias: store.get('vias', []),
 };
+let viaMarkers=[];
 
 function updateMarkers(){
   if(fromMarker){ map.removeLayer(fromMarker); fromMarker=null; }
   if(toMarker){ map.removeLayer(toMarker); toMarker=null; }
   if(state.from) fromMarker=L.marker([state.from.lat,state.from.lon],{icon:pinIcon('#1f7a4d')}).addTo(map);
   if(state.to) toMarker=L.marker([state.to.lat,state.to.lon],{icon:pinIcon('#d2483a')}).addTo(map);
+  viaMarkers.forEach(m=>map.removeLayer(m)); viaMarkers=state.vias.map(v=>L.marker([v.lat,v.lon],{icon:pinIcon('#1a73e8')}).addTo(map));
+  renderVias();
 }
+function renderVias(){
+  const box=$('#vias'); box.innerHTML=''; box.hidden=!state.vias.length;
+  state.vias.forEach((v,i)=>{ const b=document.createElement('button'); b.className='via'; b.setAttribute('aria-label','Verwijder via '+v.label); b.innerHTML='<span></span><b>×</b>'; b.firstChild.textContent=(i+1)+'. '+v.label.split(',')[0]; b.addEventListener('click',()=>{ state.vias.splice(i,1); store.set('vias',state.vias); updateMarkers(); plan(); }); box.appendChild(b); });
+}
+function addVia(loc){ state.vias.push(loc); store.set('vias',state.vias); updateMarkers(); plan(); }
 function setMe(lat,lon,head){
   state.myPos={lat,lon};
   if(!meMarker) meMarker=L.marker([lat,lon],{icon:meIcon, interactive:false, zIndexOffset:1000}).addTo(map);
@@ -306,11 +322,12 @@ function pick(i){
   const f=sugItems[i]; if(!f) return;
   const l=label(f); const [lon,lat]=f.geometry.coordinates;
   const loc={lat,lon,label:[l.line1,l.line2].filter(Boolean).join(', ')};
+  if(sugTarget.id==='via'){ sugTarget.value=''; hideSug(); sugTarget.blur(); addVia(loc); return; }
   sugTarget.value=loc.label;
   if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); } else state.from=loc;
   hideSug(); sugTarget.blur(); updateMarkers(); plan();
 }
-for(const id of ['from','to']){
+for(const id of ['from','to','via']){
   const el=$('#'+id);
   el.addEventListener('input', ()=>{ clearTimeout(sugTimer); sugTimer=setTimeout(()=>suggest(el),280); });
   el.addEventListener('keydown', e=>{
@@ -331,7 +348,7 @@ $('#swap').addEventListener('click',()=>{
   const me = state.myPos ? {lat:state.myPos.lat, lon:state.myPos.lon, label:'Mijn locatie'} : null;
   const f = state.from || me, t = state.to;
   if(!t) return;
-  state.from = t; state.to = f; store.set('to', f);
+  state.from = t; state.to = f; store.set('to', f); state.vias.reverse(); store.set('vias',state.vias);
   $('#from').value = t.label; $('#to').value = f ? f.label : '';
   updateMarkers(); plan();
 });
@@ -357,9 +374,12 @@ function drawZones(){
   $('#zoneInfo').textContent = zoneMode ? 'Tik op de kaart op een plek die je wilt mijden.' : state.zones.length ? state.zones.length+' plek(ken) worden vermeden' : '';
   $('#zoneClear').hidden = !state.zones.length;
 }
-$('#zoneMode').addEventListener('click',()=>{ zoneMode=!zoneMode; $('#zoneMode').classList.toggle('on',zoneMode); $('#zoneMode').textContent = zoneMode?'Klaar':'+ Drukke plek vermijden'; drawZones(); });
+$('#zoneMode').addEventListener('click',()=>{ zoneMode=!zoneMode; if(zoneMode && viaMode) $('#viaMode').click(); $('#zoneMode').classList.toggle('on',zoneMode); $('#zoneMode').textContent = zoneMode?'Klaar':'+ Drukke plek vermijden'; drawZones(); });
 $('#zoneClear').addEventListener('click',()=>{ state.zones=[]; store.set('zones',[]); drawZones(); plan(); });
+let viaMode=false;
+$('#viaMode').addEventListener('click',()=>{ viaMode=!viaMode; if(viaMode && zoneMode) $('#zoneMode').click(); $('#viaMode').classList.toggle('on',viaMode); $('#viaMode').textContent=viaMode?'Klaar':'+ Via-punt op kaart'; if(viaMode) toast('Tik op de weg waarover je wilt rijden'); });
 map.on('click', e=>{
+  if(viaMode && !nav.active){ addVia({lat:e.latlng.lat, lon:e.latlng.lng, label:'Punt op kaart'}); viaMode=false; $('#viaMode').classList.remove('on'); $('#viaMode').textContent='+ Via-punt op kaart'; return; }
   if(!zoneMode || nav.active) return;
   const r = map.getZoom()>=15 ? 120 : map.getZoom()>=13 ? 300 : 700;
   state.zones.push({lat:e.latlng.lat, lon:e.latlng.lng, r}); store.set('zones',state.zones); drawZones(); plan();
@@ -383,14 +403,14 @@ const VARIANTS = [
 const BAD_SURFACE = ['dirt','path','impassable']; // zand, aarde, paadjes
 const PUSH_VARIANT = {name:'wijkjes', use_highways:0, use_distance:0.6, top_speed:50, alts:0};
 const MAX_POLY_M = 9000; // publieke server staat ca. 10 km aan vermijd-omtrek toe
-function routeBody(from, to, v, heading, blockers=[]){
+function routeBody(from, to, v, heading, blockers=[], vias=state.vias){
   const loc0 = {lat:from.lat, lon:from.lon};
   if(heading!=null && !isNaN(heading)){ loc0.heading=Math.round(heading); loc0.heading_tolerance=60; }
   // Onverhard mag als de weg voor auto's open is (OSM-toegang) en goed berijdbaar is; zand/aarde wordt verderop weggeduwd.
   const auto = {use_highways:v.use_highways, use_tolls:0, use_tracks:0, exclude_unpaved:!state.gravel, use_living_streets:0.3, use_distance:v.use_distance};
   if(v.top_speed) auto.top_speed=v.top_speed;
-  const body = {locations:[loc0,{lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
-  if(v.alts) body.alternates=v.alts;
+  const body = {locations:[loc0, ...vias.map(p=>({lat:p.lat, lon:p.lon, type:'through'})), {lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
+  if(v.alts && !vias.length) body.alternates=v.alts; // alternatieven kan alleen zonder via-punten
   // eigen vermijd-plekken eerst, daarna zoveel 'blokkades' op grote wegen als binnen de limiet past
   const polys=[]; let budget=MAX_POLY_M;
   for(const z of state.zones){ const per=2*Math.PI*z.r; if(per<=budget){ polys.push(circleRing(z.lat,z.lon,z.r)); budget-=per; } }
@@ -420,7 +440,7 @@ async function plan(opts={}){
   $('#start').disabled=true; $('#demo').disabled=true;
   const variants = opts.quick ? VARIANTS.slice(0,2) : VARIANTS;
   const found=[];
-  const results = await Promise.allSettled(variants.map(v=>api('/route', routeBody(from,to,v,opts.heading))));
+  const results = await Promise.allSettled(variants.map(v=>api('/route', routeBody(from,to,v,opts.heading,[],opts.vias||state.vias))));
   let lastErr=null;
   results.forEach((res,vi)=>{
     if(res.status!=='fulfilled'){ lastErr=res.reason; return; }
@@ -447,7 +467,7 @@ async function plan(opts={}){
     if(!nb.length) continue;
     blockers=blockers.concat(nb);
     try{
-      const d=await api('/route', routeBody(from,to,PUSH_VARIANT,opts.heading,blockers));
+      const d=await api('/route', routeBody(from,to,PUSH_VARIANT,opts.heading,blockers,opts.vias||state.vias));
       if(seq!==planSeq) return;
       const r=mkRoute(d.trip, ri?'binnenbaantjes':'wijkjes'); await analyse(r);
       if(seq!==planSeq) return;
@@ -467,7 +487,7 @@ function blockersFor(r, classes, minM, existing){
   return (r.edges||[]).filter(e=>(classes.includes(e.road_class) && e.length*1000>=minM) || (BAD_SURFACE.includes(e.surface) && e.length*1000>=30))
     .sort((x,y)=>y.length-x.length)
     .map(e=>s[Math.floor((e.begin_shape_index+e.end_shape_index)/2)])
-    .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !existing.some(q=>hav(p,q)<30))
+    .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<500) && !existing.some(q=>hav(p,q)<30))
     .slice(0,60);
 }
 function allowedExtra(){ return 0.05 + (100-state.balance)/100*0.95; } // 5% .. 100%
@@ -605,7 +625,9 @@ const nav = {
     if(loc.d>tol){ this.off++; } else this.off=0;
     if(this.off>=3 && !this.sim && Date.now()-this.lastReroute>12000){
       this.lastReroute=Date.now(); this.off=0; voice.say('Route wordt herberekend.');
-      state.from=null; plan({reroute:true, quick:true, heading:this.heading}); return;
+      state.from=null;
+      const s=this.route.shape, left=state.vias.filter(v=>{ let bi=0,bd=Infinity; s.forEach((q,k)=>{ const d=hav(q,[v.lat,v.lon]); if(d<bd){bd=d;bi=k;} }); return bi>this.idx; });
+      plan({reroute:true, quick:true, heading:this.heading, vias:left}); return;
     }
     const remain=Math.max(0,this.total-along);
     const remainTime=this.route.time*(remain/this.total);
