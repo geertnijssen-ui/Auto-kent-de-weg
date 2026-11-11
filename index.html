@@ -202,7 +202,7 @@ body.picking #sheet,body.picking #plan{display:none}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.16'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.17'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -364,8 +364,21 @@ function placeArea(f){
   if(Array.isArray(e) && e.length===4){ const half=hav([e[3],e[0]],[e[1],e[2]])/2; if(half>100) return Math.round(Math.min(Math.max(half*0.8,300),3000)); }
   return def;
 }
-// Grapje: bestemming in Rekem
-function showIvan(){ const d=$('#ivan'); d.hidden=false; $('#ivanOk').focus(); try{ navigator.vibrate?.([80,60,80]); }catch(e){} }
+// Grapjes: een popup als de bestemming in een bepaalde straat ligt (straat + gemeente of postcode).
+const FUN = [
+  {street:'heirbaan',   town:['lanaken','3620','3621'], text:'ZUIPEN BIJ DEN IVAN', emoji:'🍻', ok:'Proost!'},
+  {street:'oudestraat', town:['zutendaal','3690'],      text:'COLLAKE BIJ GEERT',   emoji:'🥤', ok:'Santé!'},
+  {street:'lindestraat',town:['zutendaal','3690'],      text:'NURKEN BIJ WOUTER',   emoji:'😤', ok:'Allez dan'},
+];
+const norm = t => (t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+function funFor(f){
+  const p=f.properties||{};
+  const street = norm(p.street || (p.osm_key==='highway' ? p.name : ''));
+  if(!street) return null;
+  const town = [p.city,p.locality,p.district,p.county,p.postcode].map(norm);
+  return FUN.find(g=>street===g.street && g.town.some(t=>town.includes(t))) || null;
+}
+function showFun(g){ $('#ivanTxt').textContent=g.text; $('#ivan .ivan-emoji').textContent=g.emoji; $('#ivanOk').textContent=g.ok; $('#ivan').hidden=false; $('#ivanOk').focus(); try{ navigator.vibrate?.([80,60,80]); }catch(e){} }
 $('#ivanOk')?.addEventListener('click',()=>{ $('#ivan').hidden=true; });
 function hideSug(){ $('#suggest').hidden=true; sugItems=[]; }
 function pick(i){
@@ -374,7 +387,7 @@ function pick(i){
   const loc={lat,lon,label:[l.line1,l.line2].filter(Boolean).join(', ')};
   if(sugTarget.id==='via'){ const a=placeArea(f); if(a) loc.area=a; sugTarget.value=''; hideSug(); sugTarget.blur(); addVia(loc); return; }
   sugTarget.value=loc.label;
-  if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); if(/\bRekem\b/i.test(loc.label) || /\b3621\b/.test(loc.label) || /^rekem$/i.test(f.properties?.city||f.properties?.locality||f.properties?.district||'')) setTimeout(showIvan, 300); } else state.from=loc;
+  if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); const g=funFor(f); if(g) setTimeout(()=>showFun(g), 300); } else state.from=loc;
   hideSug(); sugTarget.blur(); updateMarkers(); plan();
 }
 for(const id of ['from','to','via']){
