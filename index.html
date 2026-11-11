@@ -583,7 +583,7 @@ function drawRoute(r, sel){
   if(r.edges && r.edges.length){
     r.edges.forEach(e=>{
       const seg=r.shape.slice(e.begin_shape_index, e.end_shape_index+1);
-      if(seg.length>1) L.polyline(seg,{color: sel?CLASS_HEX(e.road_class):'#8a9a90', weight: sel?8:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
+      if(seg.length>1) L.polyline(seg,{color: sel?CLASS_HEX(e.road_class):'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
     });
   } else L.polyline(r.shape,{color: sel?'#1ea0dc':'#8a9a90', weight: sel?8:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
 }
