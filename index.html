@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Routenet</title>
+<meta name="theme-color" content="#1f3d2f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: kaart over het hele scherm, zoekpaneel boven, routekaartjes in een onderpaneel; tijdens navigatie een grote instructiebalk boven en een statusbalk onder. */
+:root{
+  --bg:#f3f5f1; --panel:#ffffff; --fg:#17231c; --muted:#5c6b62; --line:#d9e0da;
+  --accent:#1f7a4d; --accent-fg:#ffffff; --nav:#1f3d2f; --nav-fg:#f2fbf5;
+  --quiet:#2e9d5b; --mid:#e0a526; --busy:#d2483a; --zone:#d2483a;
+  --font:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:14px; --shadow:0 6px 24px rgba(20,40,30,.18);
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1512; --panel:#18211c; --fg:#e6efe9; --muted:#97a89e; --line:#2a3630;
+  --accent:#3fbf7a; --accent-fg:#06140c; --nav:#123023; --nav-fg:#eafff1; color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:16px;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+#map{position:fixed;inset:0;z-index:0;background:var(--bg)}
+.leaflet-control-attribution{font-size:10px}
+
+/* Zoekpaneel */
+#plan{position:fixed;top:0;left:0;right:0;z-index:500;padding:calc(env(safe-area-inset-top,0px) + 10px) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));pointer-events:none}
+.card{background:var(--panel);border-radius:var(--r);box-shadow:var(--shadow);pointer-events:auto}
+#search{max-width:560px;margin:0 auto;padding:10px;display:grid;grid-template-columns:1fr auto;gap:8px;position:relative}
+.fields{display:grid;gap:6px;min-width:0}
+.field{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:0 10px;min-width:0}
+.field .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.field input{border:0;background:transparent;padding:11px 0;width:100%;min-width:0;outline:none;font-size:16px}
+.field button.clear{border:0;background:none;color:var(--muted);font-size:20px;padding:4px}
+.side{display:flex;flex-direction:column;gap:6px}
+.iconbtn{width:44px;height:44px;border-radius:10px;border:0;background:var(--bg);display:grid;place-items:center}
+.iconbtn svg{width:22px;height:22px}
+#suggest{position:absolute;left:10px;right:10px;top:100%;margin-top:6px;max-height:50vh;overflow:auto;list-style:none;padding:6px;margin-left:0;margin-right:0}
+#suggest li{padding:10px;border-radius:8px;cursor:pointer}
+#suggest li small{display:block;color:var(--muted)}
+#suggest li:hover,#suggest li.sel{background:var(--bg)}
+
+/* Onderpaneel met routes */
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:500;padding:0 max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 12px) max(12px,env(safe-area-inset-left,0px));pointer-events:none}
+#sheet .card{max-width:560px;margin:0 auto;padding:14px;display:grid;gap:12px;max-height:58vh;overflow:auto}
+.status{color:var(--muted);font-size:15px}
+.status.err{color:var(--busy)}
+.routes{display:grid;gap:8px}
+.route{border:2px solid var(--line);border-radius:12px;padding:10px 12px;background:transparent;text-align:left;display:grid;gap:6px}
+.route.sel{border-color:var(--accent)}
+.route .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.route .time{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.route .meta{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+.pill{font-size:13px;font-weight:700;padding:3px 8px;border-radius:99px;color:#fff;white-space:nowrap}
+.bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line)}
+.bar i{display:block;height:100%}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+.slider{display:grid;gap:4px}
+.slider label{display:flex;justify-content:space-between;font-size:14px;color:var(--muted)}
+.slider input{width:100%;accent-color:var(--accent)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{flex:1;min-width:120px;border:0;border-radius:12px;padding:14px;font-weight:700;font-size:17px;background:var(--bg)}
+.btn.primary{background:var(--accent);color:var(--accent-fg)}
+.btn:disabled{opacity:.5}
+.small{font-size:13px;color:var(--muted)}
+.zones{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{border:2px solid var(--line);background:transparent;border-radius:99px;padding:7px 12px;font-size:14px}
+.chip.on{border-color:var(--zone);color:var(--zone);font-weight:700}
+
+/* Navigatie */
+#nav{position:fixed;inset:0;z-index:600;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
+#banner{pointer-events:auto;background:var(--nav);color:var(--nav-fg);padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center;box-shadow:var(--shadow)}
+#turn{width:64px;height:64px;grid-row:span 2}
+#turn svg{width:64px;height:64px}
+#dist{font-size:34px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#instr{font-size:19px;line-height:1.25;min-width:0}
+#then{grid-column:1/-1;font-size:14px;opacity:.8}
+#navbottom{pointer-events:auto;margin:0 max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 12px) max(12px,env(safe-area-inset-left,0px));display:flex;gap:8px;align-items:stretch}
+#eta{flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+#eta b{font-size:24px;font-variant-numeric:tabular-nums}
+#eta span{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+#navbottom .iconbtn{width:56px;height:auto;min-height:56px;background:var(--panel);box-shadow:var(--shadow)}
+#navbottom .stop{background:var(--busy);color:#fff;border:0;border-radius:var(--r);padding:0 16px;font-weight:700;box-shadow:var(--shadow)}
+#speed{pointer-events:auto;cursor:pointer;position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 88px);width:58px;height:58px;border-radius:50%;background:var(--panel);box-shadow:var(--shadow);display:grid;place-items:center;font-weight:700;font-size:20px;line-height:1;text-align:center;font-variant-numeric:tabular-nums}
+#speed small{display:block;font-size:10px;font-weight:400;color:var(--muted)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 90px);z-index:700;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:15px;max-width:90vw;text-align:center}
+.me{width:34px;height:34px}
+.me svg{width:34px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));transition:transform .4s}
+@media (prefers-reduced-motion:reduce){.me svg{transition:none}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="plan">
+  <div id="search" class="card">
+    <div class="fields">
+      <div class="field"><span class="dot" style="background:var(--accent)"></span><input id="from" placeholder="Mijn locatie" autocomplete="off" aria-label="Van"><button class="clear" data-for="from" aria-label="Wis van">×</button></div>
+      <div class="field"><span class="dot" style="background:var(--busy)"></span><input id="to" placeholder="Waar wil je heen?" autocomplete="off" aria-label="Naar"><button class="clear" data-for="to" aria-label="Wis naar">×</button></div>
+    </div>
+    <div class="side">
+      <button class="iconbtn" id="swap" aria-label="Wissel van en naar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4v16M7 4 3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg></button>
+      <button class="iconbtn" id="locate" aria-label="Ga naar mijn locatie"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    </div>
+    <ul id="suggest" class="card" hidden></ul>
+  </div>
+</div>
+
+<div id="sheet">
+  <div class="card">
+    <div id="status" class="status">Zoek een bestemming. Routenet kiest dan de rustigste route via kleinere, verharde wegen.</div>
+    <div id="routes" class="routes"></div>
+    <div class="legend" id="legend" hidden><span style="--c:var(--quiet)">rustig</span><span style="--c:var(--mid)">doorgaande weg</span><span style="--c:var(--busy)">drukke weg</span></div>
+    <div class="slider">
+      <label for="balance"><span>Zo rustig mogelijk</span><span id="balanceTxt">max. +30% tijd</span><span>Sneller</span></label>
+      <input type="range" id="balance" min="0" max="100" value="40">
+    </div>
+    <div class="zones">
+      <button class="chip" id="zoneMode">+ Drukke plek vermijden</button>
+      <span class="small" id="zoneInfo"></span>
+      <button class="chip" id="zoneClear" hidden>Wis plekken</button>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="start" disabled>Start navigatie</button>
+      <button class="btn" id="demo" disabled>Demo-rit</button>
+    </div>
+  </div>
+</div>
+
+<div id="nav" hidden>
+  <div id="banner">
+    <div id="turn"></div>
+    <div id="dist">–</div>
+    <div id="instr">Route wordt gestart…</div>
+    <div id="then"></div>
+  </div>
+  <div id="speed" hidden>0<small>km/u</small></div>
+  <div id="navbottom">
+    <div id="eta" class="card"><b>–</b><span>–</span></div>
+    <button class="iconbtn" id="center" aria-label="Centreer op mij"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 21l8-4 8 4z"/></svg></button>
+    <button class="iconbtn" id="mute" aria-label="Geluid aan of uit"></button>
+    <button class="stop" id="stop">Stop</button>
+  </div>
+</div>
+<div id="toast" hidden></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+const VALHALLA = 'https://valhalla1.openstreetmap.de';
+const PHOTON = 'https://photon.komoot.io/api/';
+const $ = s => document.querySelector(s);
+
+/* ---------- opslag ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('rn_'+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('rn_'+k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- kaart ---------- */
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+const map = L.map('map', {zoomControl:false, attributionControl:true}).setView(store.get('view',[52.1,5.3]), store.get('zoom',8));
+L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`, {
+  maxZoom:19, subdomains:'abcd',
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/">CARTO</a> · routes <a href="https://valhalla.github.io/valhalla/">Valhalla</a>'
+}).addTo(map);
+map.on('moveend', () => { if(!nav.active){ const c=map.getCenter(); store.set('view',[c.lat,c.lng]); store.set('zoom',map.getZoom()); } });
+
+const routeLayer = L.layerGroup().addTo(map);
+const zoneLayer = L.layerGroup().addTo(map);
+let fromMarker=null, toMarker=null, meMarker=null;
+const pinIcon = c => L.divIcon({className:'', iconSize:[26,34], iconAnchor:[13,32],
+  html:`<svg width="26" height="34" viewBox="0 0 26 34"><path d="M13 33s11-11.5 11-20A11 11 0 0 0 2 13c0 8.5 11 20 11 20z" fill="${c}" stroke="#fff" stroke-width="2"/><circle cx="13" cy="13" r="4" fill="#fff"/></svg>`});
+const meIcon = L.divIcon({className:'me', iconSize:[34,34], iconAnchor:[17,17],
+  html:`<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#fff"/><circle cx="17" cy="17" r="12" fill="#1a73e8"/><path d="M17 7l6 15-6-3.5-6 3.5z" fill="#fff"/></svg>`});
+
+/* ---------- hulpfuncties ---------- */
+function decode(str, prec=6){
+  let i=0, lat=0, lng=0; const out=[], f=Math.pow(10,prec);
+  while(i<str.length){
+    let b, s=0, r=0;
+    do{ b=str.charCodeAt(i++)-63; r|=(b&31)<<s; s+=5; }while(b>=32);
+    lat += (r&1) ? ~(r>>1) : (r>>1);
+    s=0; r=0;
+    do{ b=str.charCodeAt(i++)-63; r|=(b&31)<<s; s+=5; }while(b>=32);
+    lng += (r&1) ? ~(r>>1) : (r>>1);
+    out.push([lat/f, lng/f]);
+  }
+  return out;
+}
+const R = 6371000, rad = d => d*Math.PI/180;
+function hav(a,b){ const dLat=rad(b[0]-a[0]), dLon=rad(b[1]-a[1]); const h=Math.sin(dLat/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
+function bearing(a,b){ const y=Math.sin(rad(b[1]-a[1]))*Math.cos(rad(b[0])); const x=Math.cos(rad(a[0]))*Math.sin(rad(b[0]))-Math.sin(rad(a[0]))*Math.cos(rad(b[0]))*Math.cos(rad(b[1]-a[1])); return (Math.atan2(y,x)*180/Math.PI+360)%360; }
+// projectie van punt p op segment a-b (lokaal plat), geeft {d, t}
+function projSeg(p,a,b){
+  const kx = Math.cos(rad(p[0]))*111320, ky = 110540;
+  const ax=(a[1]-p[1])*kx, ay=(a[0]-p[0])*ky, bx=(b[1]-p[1])*kx, by=(b[0]-p[0])*ky;
+  const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
+  let t = L2 ? -(ax*dx+ay*dy)/L2 : 0; t=Math.max(0,Math.min(1,t));
+  const x=ax+t*dx, y=ay+t*dy;
+  return {d:Math.sqrt(x*x+y*y), t};
+}
+const fmtDist = m => m>=10000 ? Math.round(m/1000)+' km' : m>=1000 ? (m/1000).toFixed(1).replace('.',',')+' km' : m>=100 ? Math.round(m/50)*50+' m' : Math.max(0,Math.round(m/10)*10)+' m';
+const fmtTime = s => { s=Math.round(s/60); return s<60 ? s+' min' : Math.floor(s/60)+' u '+String(s%60).padStart(2,'0'); };
+const fmtClock = d => d.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+function toast(msg, ms=2600){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, ms); }
+function setStatus(msg, err){ const s=$('#status'); s.textContent=msg; s.classList.toggle('err',!!err); }
+
+async function api(path, body){
+  // Tekst-body zonder content-type header = "simple request", geen CORS-preflight nodig.
+  const res = await fetch(VALHALLA+path, {method:'POST', body:JSON.stringify(body)});
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) { const e=new Error(data.error || ('HTTP '+res.status)); e.code=data.error_code; throw e; }
+  return data;
+}
+
+/* ---------- locaties ---------- */
+const state = {
+  from:null, // {lat,lon,label} of null = mijn locatie
+  to: store.get('to', null),
+  myPos:null,
+  zones: store.get('zones', []),
+  routes:[], sel:0,
+  balance: store.get('balance', 40),
+};
+
+function updateMarkers(){
+  if(fromMarker){ map.removeLayer(fromMarker); fromMarker=null; }
+  if(toMarker){ map.removeLayer(toMarker); toMarker=null; }
+  if(state.from) fromMarker=L.marker([state.from.lat,state.from.lon],{icon:pinIcon('#1f7a4d')}).addTo(map);
+  if(state.to) toMarker=L.marker([state.to.lat,state.to.lon],{icon:pinIcon('#d2483a')}).addTo(map);
+}
+function setMe(lat,lon,head){
+  state.myPos={lat,lon};
+  if(!meMarker) meMarker=L.marker([lat,lon],{icon:meIcon, interactive:false, zIndexOffset:1000}).addTo(map);
+  else meMarker.setLatLng([lat,lon]);
+  if(head!=null && !isNaN(head)){ const el=meMarker.getElement(); if(el) el.querySelector('svg').style.transform=`rotate(${head}deg)`; }
+}
+
+let watchId=null;
+function startWatch(){
+  if(!('geolocation' in navigator) || watchId!=null) return;
+  watchId = navigator.geolocation.watchPosition(p => {
+    if(nav.sim) return;
+    const c=p.coords;
+    onPosition({lat:c.latitude, lon:c.longitude, acc:c.accuracy, speed:c.speed, heading:c.heading, t:p.timestamp});
+  }, err => {
+    if(!state.myPos) setStatus('Locatie niet beschikbaar ('+err.message+'). Vul bij "Van" een startpunt in.', true);
+  }, {enableHighAccuracy:true, maximumAge:1000, timeout:20000});
+}
+let firstFix=true;
+function onPosition(p){
+  if(nav.active){ nav.onFix(p); return; }
+  setMe(p.lat,p.lon,p.heading);
+  if(firstFix){ firstFix=false; if(!state.to) map.setView([p.lat,p.lon],14); else if(!state.from) plan(); }
+}
+
+/* ---------- zoeken (Photon) ---------- */
+let sugTarget=null, sugItems=[], sugSel=-1, sugTimer=null, sugAbort=null;
+function label(f){
+  const p=f.properties; const name=p.name || [p.street,p.housenumber].filter(Boolean).join(' ');
+  const place=[p.postcode, p.city||p.town||p.village||p.county, p.country!=='Nederland'&&p.country!=='Netherlands'?p.country:''].filter(Boolean).join(' ');
+  const line1 = p.street && p.name && p.name!==p.street ? p.name : (name || place);
+  const line2 = [p.street && p.name!==p.street ? [p.street,p.housenumber].filter(Boolean).join(' ') : '', place].filter(Boolean).join(', ');
+  return {line1, line2: line1===place ? (p.state||'') : line2};
+}
+async function suggest(input){
+  const q=input.value.trim(); if(q.length<3){ hideSug(); return; }
+  sugAbort?.abort(); sugAbort=new AbortController();
+  const c = state.myPos || (()=>{const m=map.getCenter(); return {lat:m.lat, lon:m.lng};})();
+  try{
+    const r=await fetch(`${PHOTON}?q=${encodeURIComponent(q)}&limit=6&lat=${c.lat}&lon=${c.lon}&location_bias_scale=0.3`, {signal:sugAbort.signal});
+    const d=await r.json();
+    sugTarget=input; sugItems=d.features||[]; sugSel=-1; renderSug();
+  }catch(e){ if(e.name!=='AbortError') { hideSug(); toast('Zoeken lukt niet, controleer je internet.'); } }
+}
+function renderSug(){
+  const ul=$('#suggest'); ul.innerHTML='';
+  if(!sugItems.length){ ul.innerHTML='<li><small>Niets gevonden</small></li>'; ul.hidden=false; return; }
+  sugItems.forEach((f,i)=>{
+    const l=label(f); const li=document.createElement('li'); if(i===sugSel) li.className='sel';
+    li.innerHTML='<span></span><small></small>'; li.firstChild.textContent=l.line1; li.lastChild.textContent=l.line2;
+    li.addEventListener('mousedown', e=>{ e.preventDefault(); pick(i); });
+    ul.appendChild(li);
+  });
+  ul.hidden=false;
+}
+function hideSug(){ $('#suggest').hidden=true; sugItems=[]; }
+function pick(i){
+  const f=sugItems[i]; if(!f) return;
+  const l=label(f); const [lon,lat]=f.geometry.coordinates;
+  const loc={lat,lon,label:[l.line1,l.line2].filter(Boolean).join(', ')};
+  sugTarget.value=loc.label;
+  if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); } else state.from=loc;
+  hideSug(); sugTarget.blur(); updateMarkers(); plan();
+}
+for(const id of ['from','to']){
+  const el=$('#'+id);
+  el.addEventListener('input', ()=>{ clearTimeout(sugTimer); sugTimer=setTimeout(()=>suggest(el),280); });
+  el.addEventListener('keydown', e=>{
+    if($('#suggest').hidden) return;
+    if(e.key==='ArrowDown'){ sugSel=Math.min(sugItems.length-1,sugSel+1); renderSug(); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ sugSel=Math.max(0,sugSel-1); renderSug(); e.preventDefault(); }
+    else if(e.key==='Enter'){ pick(Math.max(0,sugSel)); e.preventDefault(); }
+    else if(e.key==='Escape') hideSug();
+  });
+  el.addEventListener('blur', ()=>setTimeout(hideSug,150));
+}
+document.querySelectorAll('.clear').forEach(b=>b.addEventListener('click',()=>{
+  const id=b.dataset.for; $('#'+id).value='';
+  if(id==='from') state.from=null; else { state.to=null; store.set('to',null); clearRoutes(); }
+  updateMarkers(); if(id==='from') plan(); $('#'+id).focus();
+}));
+$('#swap').addEventListener('click',()=>{
+  const me = state.myPos ? {lat:state.myPos.lat, lon:state.myPos.lon, label:'Mijn locatie'} : null;
+  const f = state.from || me, t = state.to;
+  if(!t) return;
+  state.from = t; state.to = f; store.set('to', f);
+  $('#from').value = t.label; $('#to').value = f ? f.label : '';
+  updateMarkers(); plan();
+});
+$('#locate').addEventListener('click',()=>{
+  startWatch();
+  if(state.myPos) map.setView([state.myPos.lat,state.myPos.lon],15); else toast('Locatie wordt gezocht…');
+});
+
+/* ---------- vermijd-zones ---------- */
+let zoneMode=false;
+function circleRing(lat,lon,r){ const ring=[]; for(let i=0;i<=16;i++){ const a=i/16*2*Math.PI; ring.push([lon + (r*Math.sin(a))/(111320*Math.cos(rad(lat))), lat + (r*Math.cos(a))/110540]); } return ring; }
+function drawZones(){
+  zoneLayer.clearLayers();
+  state.zones.forEach((z,i)=>{
+    const c=L.circle([z.lat,z.lon],{radius:z.r,color:'#d2483a',weight:2,fillOpacity:.15}).addTo(zoneLayer);
+    c.bindTooltip('Tik om te verwijderen'); c.on('click',e=>{ L.DomEvent.stop(e); state.zones.splice(i,1); store.set('zones',state.zones); drawZones(); plan(); });
+  });
+  $('#zoneInfo').textContent = zoneMode ? 'Tik op de kaart op een plek die je wilt mijden.' : state.zones.length ? state.zones.length+' plek(ken) worden vermeden' : '';
+  $('#zoneClear').hidden = !state.zones.length;
+}
+$('#zoneMode').addEventListener('click',()=>{ zoneMode=!zoneMode; $('#zoneMode').classList.toggle('on',zoneMode); $('#zoneMode').textContent = zoneMode?'Klaar':'+ Drukke plek vermijden'; drawZones(); });
+$('#zoneClear').addEventListener('click',()=>{ state.zones=[]; store.set('zones',[]); drawZones(); plan(); });
+map.on('click', e=>{
+  if(!zoneMode || nav.active) return;
+  const r = map.getZoom()>=15 ? 120 : map.getZoom()>=13 ? 300 : 700;
+  state.zones.push({lat:e.latlng.lat, lon:e.latlng.lng, r}); store.set('zones',state.zones); drawZones(); plan();
+});
+
+/* ---------- route plannen ---------- */
+// Gewicht per wegklasse: hoe "druk" een kilometer op dit type weg aanvoelt.
+const BUSY = {motorway:10, trunk:8, primary:4, secondary:2, tertiary:0.8, unclassified:0.35, residential:0.5, service_other:0.6};
+const CLASS_COLOR = rc => (BUSY[rc]??1) >= 4 ? 'var(--busy)' : (BUSY[rc]??1) >= 2 ? 'var(--mid)' : 'var(--quiet)';
+const CLASS_HEX = rc => (BUSY[rc]??1) >= 4 ? '#d2483a' : (BUSY[rc]??1) >= 2 ? '#e0a526' : '#2e9d5b';
+
+// Drie profielen: van "rustig maar redelijk snel" tot "echt binnendoor".
+const VARIANTS = [
+  {name:'rustig',    use_highways:0,   use_distance:0,   alts:2},
+  {name:'binnendoor', use_highways:0, use_distance:0.4, top_speed:70, alts:1},
+  {name:'landweggetjes', use_highways:0, use_distance:0.7, top_speed:55, alts:1},
+];
+function routeBody(from, to, v, heading){
+  const loc0 = {lat:from.lat, lon:from.lon};
+  if(heading!=null && !isNaN(heading)){ loc0.heading=Math.round(heading); loc0.heading_tolerance=60; }
+  const auto = {use_highways:v.use_highways, use_tolls:0, use_tracks:0, exclude_unpaved:true, use_living_streets:0.3, use_distance:v.use_distance};
+  if(v.top_speed) auto.top_speed=v.top_speed;
+  const body = {locations:[loc0,{lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
+  if(v.alts) body.alternates=v.alts;
+  if(state.zones.length) body.exclude_polygons = state.zones.map(z=>circleRing(z.lat,z.lon,z.r));
+  return body;
+}
+async function analyse(r){
+  try{
+    const d = await api('/trace_attributes', {encoded_polyline:r.shapeStr, shape_match:'edge_walk', costing:'auto',
+      filters:{attributes:['edge.road_class','edge.length','edge.surface','edge.unpaved','edge.begin_shape_index','edge.end_shape_index'], action:'include'}});
+    r.edges = d.edges||[];
+  }catch(e){ r.edges=null; }
+  const tot = {}; let km=0, busy=0, unpaved=0;
+  (r.edges||[]).forEach(e=>{ const rc=e.road_class||'service_other'; tot[rc]=(tot[rc]||0)+e.length; km+=e.length; busy+=e.length*(BUSY[rc]??1); if(e.unpaved) unpaved+=e.length; });
+  r.classes=tot; r.unpavedKm=unpaved;
+  r.quiet = km ? Math.max(0, Math.min(100, Math.round(100*(1 - (busy/km)/5)))) : null;
+}
+let planSeq=0;
+async function plan(opts={}){
+  const from = state.from || state.myPos; const to = state.to;
+  if(!to){ return; }
+  if(!from){ setStatus('Wachten op je locatie… of vul bij "Van" een startpunt in.'); startWatch(); return; }
+  const seq=++planSeq;
+  setStatus(opts.reroute ? 'Nieuwe route berekenen…' : 'Rustige routes zoeken…');
+  $('#start').disabled=true; $('#demo').disabled=true;
+  const variants = opts.quick ? VARIANTS.slice(0,2) : VARIANTS;
+  const found=[];
+  const results = await Promise.allSettled(variants.map(v=>api('/route', routeBody(from,to,v,opts.heading))));
+  let lastErr=null;
+  results.forEach((res,vi)=>{
+    if(res.status!=='fulfilled'){ lastErr=res.reason; return; }
+    [res.value.trip, ...(res.value.alternates||[]).map(a=>a.trip)].forEach(trip=>{
+      if(!trip) return;
+      const leg=trip.legs[0];
+      const r={variant:variants[vi].name, time:trip.summary.time, km:trip.summary.length, shapeStr:leg.shape, shape:decode(leg.shape), maneuvers:leg.maneuvers};
+      // dubbele routes weglaten
+      if(found.some(f=>Math.abs(f.km-r.km)<0.05*r.km && Math.abs(f.time-r.time)<0.03*r.time)) return;
+      found.push(r);
+    });
+  });
+  if(seq!==planSeq) return;
+  if(!found.length){
+    const msg = lastErr?.code===442 || /no path/i.test(lastErr?.message||'') ? 'Geen route gevonden. Misschien ligt een vermeden plek in de weg?' : 'Route berekenen lukt niet ('+(lastErr?.message||'geen verbinding')+'). Probeer het zo opnieuw.';
+    setStatus(msg,true); if(opts.reroute) toast(msg); return;
+  }
+  found.splice(6);
+  for(const r of found){ await analyse(r); if(seq!==planSeq) return; }
+  state.routes=found;
+  rank();
+  if(opts.reroute){ nav.load(state.routes[state.sel]); return; }
+  renderRoutes(true);
+}
+function allowedExtra(){ return 0.05 + (100-state.balance)/100*0.55; } // 5% .. 60%
+function rank(){
+  const rs=state.routes; const fastest=Math.min(...rs.map(r=>r.time)); const limit=fastest*(1+allowedExtra());
+  rs.forEach(r=>{ r.ok = r.time<=limit+1; r.score = (r.quiet??50) - (r.time/fastest-1)*20*(state.balance/50); });
+  rs.sort((a,b)=> (b.ok-a.ok) || (b.score-a.score) || (a.time-b.time));
+  state.sel=0;
+}
+function clearRoutes(){ state.routes=[]; routeLayer.clearLayers(); $('#routes').innerHTML=''; $('#legend').hidden=true; $('#start').disabled=true; $('#demo').disabled=true; setStatus('Zoek een bestemming.'); }
+function pillFor(q){ if(q==null) return ['onbekend','var(--muted)']; if(q>=75) return [q+'% rustig','var(--quiet)']; if(q>=50) return [q+'% rustig','var(--mid)']; return [q+'% rustig','var(--busy)']; }
+function drawRoute(r, sel){
+  if(r.edges && r.edges.length){
+    r.edges.forEach(e=>{
+      const seg=r.shape.slice(e.begin_shape_index, e.end_shape_index+1);
+      if(seg.length>1) L.polyline(seg,{color: sel?CLASS_HEX(e.road_class):'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
+    });
+  } else L.polyline(r.shape,{color: sel?'#1f7a4d':'#8a9a90', weight: sel?7:5, opacity: sel?0.95:0.55, interactive:false}).addTo(routeLayer);
+}
+function renderRoutes(fit){
+  routeLayer.clearLayers();
+  state.routes.forEach((r,i)=>{ if(i!==state.sel){ const casing=L.polyline(r.shape,{color:'transparent',weight:22}).addTo(routeLayer); casing.on('click',()=>{ state.sel=i; renderRoutes(false); }); drawRoute(r,false);} });
+  const cur=state.routes[state.sel];
+  L.polyline(cur.shape,{color:'#0b2a1b',weight:11,opacity:.35,interactive:false}).addTo(routeLayer);
+  drawRoute(cur,true);
+  if(fit) map.fitBounds(L.latLngBounds(cur.shape),{paddingTopLeft:[30,140],paddingBottomRight:[30,Math.min(window.innerHeight*0.55,420)]});
+  const fastest=Math.min(...state.routes.map(r=>r.time));
+  const box=$('#routes'); box.innerHTML='';
+  state.routes.forEach((r,i)=>{
+    const b=document.createElement('button'); b.className='route'+(i===state.sel?' sel':'');
+    const [pt,pc]=pillFor(r.quiet);
+    const extra = r.time-fastest>60 ? ' · +'+fmtTime(r.time-fastest) : i===state.sel||r.time===fastest ? ' · snelste' : '';
+    const segs = Object.entries(r.classes||{}).sort((a,b)=>(BUSY[b[0]]??1)-(BUSY[a[0]]??1)).map(([rc,km])=>`<i style="width:${(km/r.km*100).toFixed(1)}%;background:${CLASS_COLOR(rc)}"></i>`).join('');
+    const bigKm = Object.entries(r.classes||{}).filter(([rc])=>(BUSY[rc]??1)>=4).reduce((s,[,k])=>s+k,0);
+    b.innerHTML=`<div class="top"><span class="time">${fmtTime(r.time)}</span><span class="pill" style="background:${pc}">${pt}</span></div>
+      <div class="meta">${r.km.toFixed(1).replace('.',',')} km${extra}${r.edges? ' · '+bigKm.toFixed(1).replace('.',',')+' km grote weg':''}${!r.ok?' · te veel omweg':''}</div>
+      ${segs?`<div class="bar">${segs}</div>`:''}`;
+    b.addEventListener('click',()=>{ state.sel=i; renderRoutes(false); });
+    box.appendChild(b);
+  });
+  $('#legend').hidden=!cur.edges;
+  setStatus(state.routes.length>1 ? 'Bovenste route is de rustigste binnen je omweg-grens. Tik een andere aan om te vergelijken.' : 'Dit is de rustigste route die we vonden.');
+  $('#start').disabled=false; $('#demo').disabled=false;
+}
+function updateBalanceTxt(){ $('#balanceTxt').textContent='max. +'+Math.round(allowedExtra()*100)+'% tijd'; }
+$('#balance').value=state.balance; updateBalanceTxt();
+$('#balance').addEventListener('input',e=>{ state.balance=+e.target.value; store.set('balance',state.balance); updateBalanceTxt(); if(state.routes.length){ rank(); renderRoutes(false); } });
+
+/* ---------- navigatie ---------- */
+const TURN_ANGLE = {7:0,8:0,9:45,10:90,11:135,12:180,13:-180,14:-135,15:-90,16:-45,17:0,18:35,19:-35,20:35,21:-35,22:0,23:20,24:-20,25:0};
+function turnSvg(type){
+  if(type>=4 && type<=6) return '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 56V8M18 10h28l-6 9 6 9H18"/></svg>';
+  if(type===26||type===27) return '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="30" r="11"/><path d="M32 60V41M43 30h14M51 24l6 6-6 6"/></svg>';
+  if(type===12||type===13) return `<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g transform="${type===12?'':'translate(64 0) scale(-1 1)'}"><path d="M20 58V26a12 12 0 0 1 24 0v20M36 38l8 9 8-9"/></g></svg>`;
+  const a = TURN_ANGLE[type] ?? 0;
+  return `<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M32 60V34"/><g transform="rotate(${a} 32 34)"><path d="M32 34V8M22 18l10-10 10 10"/></g></svg>`;
+}
+const voice = {
+  on: store.get('voice', true), v:null,
+  init(){ if(!('speechSynthesis' in window)) return; const pick=()=>{ const vs=speechSynthesis.getVoices(); this.v = vs.find(v=>/^nl[-_]NL/i.test(v.lang)) || vs.find(v=>/^nl/i.test(v.lang)) || null; }; pick(); speechSynthesis.onvoiceschanged=pick; },
+  say(t){ if(!this.on || !t || !('speechSynthesis' in window)) return; const u=new SpeechSynthesisUtterance(t); u.lang='nl-NL'; if(this.v) u.voice=this.v; u.rate=1.02; speechSynthesis.cancel(); speechSynthesis.speak(u); },
+  icon(){ $('#mute').innerHTML = this.on ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9l6 6M22 9l-6 6"/></svg>'; }
+};
+voice.init(); voice.icon();
+$('#mute').addEventListener('click',()=>{ voice.on=!voice.on; store.set('voice',voice.on); voice.icon(); if(!voice.on) speechSynthesis?.cancel(); else voice.say('Gesproken aanwijzingen staan aan.'); });
+
+const nav = {
+  active:false, sim:null, route:null, cum:[], total:0, idx:0, follow:true, off:0, lastReroute:0, announced:{}, lastPos:null, wake:null, heading:null,
+  load(r){
+    this.route=r; this.cum=[0];
+    for(let i=1;i<r.shape.length;i++) this.cum.push(this.cum[i-1]+hav(r.shape[i-1],r.shape[i]));
+    this.total=this.cum[this.cum.length-1]; this.idx=0; this.off=0; this.announced={};
+    routeLayer.clearLayers();
+    L.polyline(r.shape,{color:'#0b2a1b',weight:12,opacity:.35,interactive:false}).addTo(routeLayer);
+    drawRoute(r,true);
+  },
+  async start(sim){
+    if(!state.routes.length) return;
+    this.active=true; this.follow=true; this.arrived=false;
+    this.load(state.routes[state.sel]);
+    $('#plan').hidden=true; $('#sheet').hidden=true; $('#nav').hidden=false; $('#speed').hidden=false;
+    try{ this.wake = await navigator.wakeLock?.request('screen'); }catch(e){}
+    const m0=this.route.maneuvers[0];
+    voice.say((m0?.verbal_pre_transition_instruction || 'Route gestart.') + ' ');
+    if(sim) this.startSim(); else { startWatch(); if(state.myPos) this.onFix({...state.myPos, speed:0}); }
+    map.setZoom(17);
+  },
+  stop(){
+    this.active=false; if(this.sim){ clearInterval(this.sim.t); this.sim=null; }
+    this.wake?.release?.().catch(()=>{}); this.wake=null;
+    speechSynthesis?.cancel?.();
+    $('#plan').hidden=false; $('#sheet').hidden=false; $('#nav').hidden=true;
+    if(state.routes.length) renderRoutes(true);
+  },
+  startSim(){
+    // rijdt de route na met een realistische snelheid per wegklasse
+    const speedOf = {motorway:30,trunk:25,primary:20,secondary:19,tertiary:16,unclassified:14,residential:9,service_other:7};
+    const r=this.route; let along=0, mult=1;
+    const classAt = i => { const e=(r.edges||[]).find(e=>i>=e.begin_shape_index && i<e.end_shape_index); return e?.road_class; };
+    this.sim={mult, t:setInterval(()=>{
+      let i=0; while(i<this.cum.length-2 && this.cum[i+1]<along) i++;
+      const v = speedOf[classAt(i)] || 13;
+      along += v*this.sim.mult;
+      if(along>=this.total) along=this.total;
+      while(i<this.cum.length-2 && this.cum[i+1]<along) i++;
+      const segLen=(this.cum[i+1]-this.cum[i])||1, t=Math.min(1,(along-this.cum[i])/segLen);
+      const a=r.shape[i], b=r.shape[Math.min(i+1,r.shape.length-1)];
+      this.onFix({lat:a[0]+(b[0]-a[0])*t, lon:a[1]+(b[1]-a[1])*t, speed:v, heading:bearing(a,b), acc:5});
+      if(along>=this.total){ clearInterval(this.sim.t); }
+    },1000)};
+    toast('Demo-rit: tik op de snelheid om sneller te spelen');
+  },
+  locate(p){
+    // dichtstbijzijnde punt op de route, gezocht rond de vorige positie
+    const s=this.route.shape; let best={d:Infinity,i:this.idx,t:0};
+    const from=Math.max(0,this.idx-30), to=Math.min(s.length-1,this.idx+400);
+    for(let i=from;i<to;i++){ const pr=projSeg([p.lat,p.lon],s[i],s[i+1]); if(pr.d<best.d) best={d:pr.d,i,t:pr.t}; }
+    if(best.d>200){ for(let i=0;i<s.length-1;i++){ const pr=projSeg([p.lat,p.lon],s[i],s[i+1]); if(pr.d<best.d) best={d:pr.d,i,t:pr.t}; } }
+    return best;
+  },
+  onFix(p){
+    let head=p.heading;
+    if((head==null||isNaN(head)) && this.lastPos && hav([this.lastPos.lat,this.lastPos.lon],[p.lat,p.lon])>3) head=bearing([this.lastPos.lat,this.lastPos.lon],[p.lat,p.lon]);
+    if(head!=null && !isNaN(head)) this.heading=head;
+    this.lastPos=p;
+    setMe(p.lat,p.lon,this.heading);
+    const kmh = p.speed!=null && p.speed>=0 ? Math.round(p.speed*3.6) : null;
+    $('#speed').innerHTML=(kmh??'–')+'<small>km/u</small>';
+    if(this.follow) map.setView([p.lat,p.lon], map.getZoom()<15?17:map.getZoom(), {animate:true});
+    if(!this.route) return;
+    const loc=this.locate(p); this.idx=loc.i;
+    const along=this.cum[loc.i]+(this.cum[loc.i+1]-this.cum[loc.i])*loc.t;
+    // van de route af?
+    const tol = 45 + Math.min(60,(p.acc||10));
+    if(loc.d>tol){ this.off++; } else this.off=0;
+    if(this.off>=3 && !this.sim && Date.now()-this.lastReroute>12000){
+      this.lastReroute=Date.now(); this.off=0; voice.say('Route wordt herberekend.');
+      state.from=null; plan({reroute:true, quick:true, heading:this.heading}); return;
+    }
+    const remain=Math.max(0,this.total-along);
+    const remainTime=this.route.time*(remain/this.total);
+    $('#eta b').textContent=fmtClock(new Date(Date.now()+remainTime*1000));
+    $('#eta span').textContent=fmtDist(remain)+' · '+fmtTime(remainTime);
+    if(remain<25 && !this.arrived){ this.arrived=true; $('#dist').textContent=''; $('#instr').textContent='Je bent op je bestemming.'; $('#turn').innerHTML=turnSvg(4); $('#then').textContent=''; voice.say('Je bent op je bestemming aangekomen.'); return; }
+    if(this.arrived) return;
+    const ms=this.route.maneuvers; let ni=ms.findIndex(m=>m.begin_shape_index>loc.i);
+    if(ni<0) ni=ms.length-1;
+    const m=ms[ni]; const d=Math.max(0,this.cum[m.begin_shape_index]-along);
+    $('#turn').innerHTML=turnSvg(m.type);
+    $('#dist').textContent=fmtDist(d);
+    $('#instr').textContent=m.instruction;
+    const nx=ms[ni+1]; $('#then').textContent = nx && m.length<0.3 && nx.type!==4 ? 'Daarna: '+nx.instruction : (m.street_names?.length? '' : '');
+    // gesproken aanwijzingen
+    const v=Math.max(8,p.speed||10), a=this.announced[ni]||(this.announced[ni]={});
+    const farAt = v>22 ? 1200 : v>15 ? 600 : 300;
+    const nearAt = Math.max(40, v*5);
+    const txt = m.verbal_pre_transition_instruction || m.instruction;
+    if(!a.far && d<=farAt && d>nearAt*2.2 && ni>0){ a.far=true; voice.say('Over '+fmtDist(d).replace(' m',' meter').replace(' km',' kilometer')+', '+lowerFirst(m.verbal_transition_alert_instruction||txt)); }
+    else if(!a.near && d<=nearAt){ a.near=a.far=true; voice.say(txt); }
+  }
+};
+const lowerFirst = s => s ? s.charAt(0).toLowerCase()+s.slice(1) : s;
+$('#start').addEventListener('click',()=>nav.start(false));
+$('#demo').addEventListener('click',()=>nav.start(true));
+$('#stop').addEventListener('click',()=>nav.stop());
+$('#center').addEventListener('click',()=>{ nav.follow=true; if(nav.lastPos) map.setView([nav.lastPos.lat,nav.lastPos.lon],17); });
+$('#speed').addEventListener('click',()=>{ if(nav.sim){ nav.sim.mult = nav.sim.mult>=8?1:nav.sim.mult*2; toast('Demo-snelheid ×'+nav.sim.mult); } });
+map.on('dragstart',()=>{ if(nav.active) nav.follow=false; });
+document.addEventListener('visibilitychange', async ()=>{ if(nav.active && document.visibilityState==='visible' && !nav.wake){ try{ nav.wake=await navigator.wakeLock?.request('screen'); }catch(e){} } });
+
+/* ---------- opstarten ---------- */
+if(state.to){ $('#to').value=state.to.label; }
+updateMarkers(); drawZones();
+startWatch();
+if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

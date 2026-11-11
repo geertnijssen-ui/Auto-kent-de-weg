@@ -1,0 +1,22 @@
+# Routenet
+
+Navigatie-app die zo veel mogelijk binnendoor rijdt: grote en drukke wegen worden vermeden, onverharde wegen en zandpaden nooit gebruikt.
+
+## Zo werkt het
+- **Kaart:** OpenStreetMap (tegels van CARTO).
+- **Routes:** de gratis publieke [Valhalla](https://valhalla.github.io/valhalla/)-server. Per rit worden drie profielen gevraagd (rustig, binnendoor, landweggetjes) plus alternatieven, met snelwegen ontmoedigd en onverhard uitgesloten.
+- **Rustscore:** van elke route wordt per stuk weg de wegklasse opgehaald. Kilometers op snelweg, autoweg en provinciale weg tellen zwaar, dorpsstraten en landwegen licht. Zo krijgt elke route een percentage "rustig", en de kaart kleurt groen, oranje of rood.
+- **Schuifje:** bepaalt hoeveel extra reistijd je wilt accepteren voor een rustigere route (5% tot 60%).
+- **Drukke plek vermijden:** tik op "+ Drukke plek vermijden" en tik op de kaart. Die plek wordt voortaan omzeild (wordt op je toestel bewaard).
+- **Navigeren:** GPS, gesproken Nederlandse aanwijzingen, automatisch herberekenen als je van de route afgaat, scherm blijft aan.
+- **Demo-rit:** rijdt de route virtueel na om alles thuis te testen. Tik op de snelheid om sneller af te spelen.
+- **Op je beginscherm zetten:** open de site op je telefoon en kies "Zet op beginscherm". Dan opent hij als een app.
+
+## Online zetten met Netlify
+1. Op netlify.com: **Add new project → Import an existing project → GitHub**.
+2. Kies deze repo. Build command leeg laten, publish directory `.` (staat al in `netlify.toml`).
+3. **Deploy**. Elke wijziging in deze repo komt daarna vanzelf online.
+
+## Grenzen van dit prototype
+- De publieke Valhalla-server is bedoeld voor licht gebruik en heeft geen live verkeersinformatie. "Drukke punten" worden dus bepaald door het type weg en je eigen vermijd-plekken, niet door actuele files.
+- De kaart draait niet mee met je rijrichting (noorden blijft boven).
