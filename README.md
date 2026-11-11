@@ -22,3 +22,4 @@ Navigatie-app die zo veel mogelijk binnendoor rijdt: grote en drukke wegen worde
 - De publieke Valhalla-server is bedoeld voor licht gebruik en heeft geen live verkeersinformatie. "Drukke punten" worden dus bepaald door het type weg en je eigen vermijd-plekken, niet door actuele files.
 - De kaart draait niet mee met je rijrichting (noorden blijft boven).
 - **Bijwerken:** de app ziet zelf als er een nieuwe versie op Netlify staat en toont dan een knop "Bijwerken". Onder "Meer opties" staat ook "App bijwerken". Bij elke wijziging `APP_VERSION` in index.html ophogen.
+- **Flitspalen:** vaste flitspalen en trajectcontroles uit OpenStreetMap (via Overpass) staan op de kaart en in het routekaartje; tijdens het rijden waarschuwt de stem op tijd. Politiecontroles worden bewust niet getoond (in België verboden om te verspreiden).
