@@ -202,7 +202,7 @@ body.picking #sheet,body.picking #plan{display:none}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.17'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.18'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -368,7 +368,7 @@ function placeArea(f){
 const FUN = [
   {street:'heirbaan',   town:['lanaken','3620','3621'], text:'ZUIPEN BIJ DEN IVAN', emoji:'🍻', ok:'Proost!'},
   {street:'oudestraat', town:['zutendaal','3690'],      text:'COLLAKE BIJ GEERT',   emoji:'🥤', ok:'Santé!'},
-  {street:'lindestraat',town:['zutendaal','3690'],      text:'NURKEN BIJ WOUTER',   emoji:'😤', ok:'Allez dan'},
+  {street:'lindenstraat',town:['zutendaal','3690'],      text:'NURKEN BIJ WOUTER',   emoji:'😤', ok:'Allez dan'},
 ];
 const norm = t => (t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
 function funFor(f){
