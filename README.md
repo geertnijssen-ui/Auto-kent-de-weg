@@ -1,10 +1,10 @@
 # Routenet
 
-Navigatie-app die zo veel mogelijk binnendoor rijdt: grote en drukke wegen worden vermeden, onverharde wegen en zandpaden nooit gebruikt.
+Navigatie-app die zo veel mogelijk binnendoor rijdt: grote en drukke wegen worden vermeden, zandwegen en aardepaden vermeden; goed berijdbare grind- of halfverharde wegen waar auto's mogen komen wel (uit te zetten).
 
 ## Zo werkt het
 - **Kaart:** OpenStreetMap (tegels van CARTO).
-- **Routes:** de gratis publieke [Valhalla](https://valhalla.github.io/valhalla/)-server. Per rit worden drie profielen gevraagd (rustig, binnendoor, landweggetjes) plus alternatieven, met snelwegen ontmoedigd en onverhard uitgesloten.
+- **Routes:** de gratis publieke [Valhalla](https://valhalla.github.io/valhalla/)-server. Per rit worden drie profielen gevraagd (rustig, binnendoor, landweggetjes) plus alternatieven. Daarna "duwt" de app de route van grote wegen af: midden op lange stukken provinciale of grote weg worden kleine blokkades gezet en wordt opnieuw gerekend, tot hij door wijken en binnenbaantjes gaat (binnen je omweg-grens). Toegangsregels uit OpenStreetMap (bv. alleen landbouwverkeer) worden altijd gerespecteerd.
 - **Rustscore:** van elke route wordt per stuk weg de wegklasse opgehaald. Kilometers op snelweg, autoweg en provinciale weg tellen zwaar, dorpsstraten en landwegen licht. Zo krijgt elke route een percentage "rustig", en de kaart kleurt groen, oranje of rood.
 - **Schuifje:** bepaalt hoeveel extra reistijd je wilt accepteren voor een rustigere route (5% tot 60%).
 - **Drukke plek vermijden:** tik op "+ Drukke plek vermijden" en tik op de kaart. Die plek wordt voortaan omzeild (wordt op je toestel bewaard).

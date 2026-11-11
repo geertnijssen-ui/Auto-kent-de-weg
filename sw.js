@@ -1,5 +1,5 @@
 // Bewaart de app zelf offline; kaarttegels en routes komen altijd live van internet.
-const CACHE = 'routenet-v1';
+const CACHE = 'routenet-v2';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
