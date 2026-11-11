@@ -260,7 +260,7 @@ function startWatch(){
     const c=p.coords;
     onPosition({lat:c.latitude, lon:c.longitude, acc:c.accuracy, speed:c.speed, heading:c.heading, t:p.timestamp});
   }, err => {
-    if(!state.myPos) setStatus('Locatie niet beschikbaar ('+err.message+'). Vul bij "Van" een startpunt in.', true);
+    if(!state.myPos) setStatus(err.code===1 ? 'Geen toegang tot je locatie. Zet locatie aan voor je browser (iPhone: Instellingen → Chrome of Safari → Locatie) en ververs de pagina.' : 'Locatie nog niet gevonden. Vul eventueel bij "Van" een startpunt in.', true);
   }, {enableHighAccuracy:true, maximumAge:1000, timeout:20000});
 }
 let firstFix=true;
@@ -336,7 +336,11 @@ $('#swap').addEventListener('click',()=>{
 });
 $('#locate').addEventListener('click',()=>{
   startWatch();
-  if(state.myPos) map.setView([state.myPos.lat,state.myPos.lon],15); else toast('Locatie wordt gezocht…');
+  if(state.myPos){ map.setView([state.myPos.lat,state.myPos.lon],15); return; }
+  toast('Locatie wordt gezocht…');
+  navigator.geolocation?.getCurrentPosition(p=>{ onPosition({lat:p.coords.latitude, lon:p.coords.longitude, acc:p.coords.accuracy}); map.setView([p.coords.latitude,p.coords.longitude],15); },
+    err=>{ toast(err.code===1 ? 'Locatie geweigerd. Zet op iPhone: Instellingen → Chrome/Safari → Locatie → Bij gebruik van app.' : 'Locatie niet gevonden, probeer het buiten nog eens.', 6000); },
+    {enableHighAccuracy:true, timeout:15000});
 });
 
 /* ---------- vermijd-zones ---------- */
