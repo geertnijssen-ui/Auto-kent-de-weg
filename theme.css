@@ -33,7 +33,7 @@ b,strong,.btn,#dist,.route .time{font-weight:800}
 .field input{padding:12px 0;font-weight:700}
 .field input::placeholder{color:var(--muted);font-weight:600}
 .iconbtn{width:46px;height:46px;border-radius:50%;background:var(--bg);color:var(--accent-dark)}
-.via{background:var(--accent);border-radius:99px;font-weight:700}
+.via{background:#8e6bf2;border-radius:99px;font-weight:700}
 #suggest{border-radius:20px}
 #suggest li{border-radius:14px;font-weight:700}
 #suggest li small{font-weight:600}

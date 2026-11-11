@@ -131,7 +131,7 @@ body.picking #sheet,body.picking #plan{display:none}
     <div class="fields">
       <div class="field"><span class="dot" style="background:var(--accent)"></span><input id="from" placeholder="Mijn locatie" autocomplete="off" aria-label="Van"><button class="clear" data-for="from" aria-label="Wis van">×</button></div>
       <div class="field"><span class="dot" style="background:var(--busy)"></span><input id="to" placeholder="Waar wil je heen?" autocomplete="off" aria-label="Naar"><button class="clear" data-for="to" aria-label="Wis naar">×</button></div>
-      <div class="field" id="viaField" hidden><span class="dot" style="background:#8e6bf2"></span><input id="via" placeholder="Rijden via… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
+      <div class="field" id="viaField"><span class="dot" style="background:#8e6bf2"></span><input id="via" placeholder="Rijden via dorp… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
       <div id="vias" class="vias" hidden></div>
     </div>
     <div class="side">
@@ -201,7 +201,7 @@ body.picking #sheet,body.picking #plan{display:none}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
-const APP_VERSION = '2026-11-11.14'; // ophogen bij elke wijziging
+const APP_VERSION = '2026-11-11.15'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
@@ -290,7 +290,7 @@ function updateMarkers(){
   if(toMarker){ map.removeLayer(toMarker); toMarker=null; }
   if(state.from) fromMarker=L.marker([state.from.lat,state.from.lon],{icon:pinIcon('#1ea0dc')}).addTo(map);
   if(state.to) toMarker=L.marker([state.to.lat,state.to.lon],{icon:pinIcon('#ec4d4d')}).addTo(map);
-  viaMarkers.forEach(m=>map.removeLayer(m)); viaMarkers=state.vias.map(v=>L.marker([v.lat,v.lon],{icon:pinIcon('#8e6bf2')}).addTo(map));
+  viaMarkers.forEach(m=>map.removeLayer(m)); viaMarkers=state.vias.flatMap(v=>[L.marker([v.lat,v.lon],{icon:pinIcon('#8e6bf2')}).addTo(map), ...(v.area?[L.circle([v.lat,v.lon],{radius:v.area,color:'#8e6bf2',weight:2,dashArray:'6 6',fillOpacity:.06,interactive:false}).addTo(map)]:[])]);
   renderVias();
 }
 function renderVias(){
@@ -353,12 +353,22 @@ function renderSug(){
   });
   ul.hidden=false;
 }
+// Een dorp of stad als via-punt: de route moet erdoor, maar mag overal in de kern langs, niet per se via het centrum.
+// Straal uit de omtrek die Photon meegeeft, anders een vaste waarde per soort plaats.
+function placeArea(f){
+  const p=f.properties||{}; if(p.osm_key!=='place') return 0;
+  const def={city:2500,town:1500,village:900,suburb:700,quarter:600,hamlet:450,neighbourhood:450,isolated_dwelling:200}[p.osm_value]||0;
+  if(!def) return 0;
+  const e=p.extent; // [minLon, maxLat, maxLon, minLat]
+  if(Array.isArray(e) && e.length===4){ const half=hav([e[3],e[0]],[e[1],e[2]])/2; if(half>100) return Math.round(Math.min(Math.max(half*0.8,300),3000)); }
+  return def;
+}
 function hideSug(){ $('#suggest').hidden=true; sugItems=[]; }
 function pick(i){
   const f=sugItems[i]; if(!f) return;
   const l=label(f); const [lon,lat]=f.geometry.coordinates;
   const loc={lat,lon,label:[l.line1,l.line2].filter(Boolean).join(', ')};
-  if(sugTarget.id==='via'){ sugTarget.value=''; hideSug(); sugTarget.blur(); addVia(loc); return; }
+  if(sugTarget.id==='via'){ const a=placeArea(f); if(a) loc.area=a; sugTarget.value=''; hideSug(); sugTarget.blur(); addVia(loc); return; }
   sugTarget.value=loc.label;
   if(sugTarget.id==='to'){ state.to=loc; store.set('to',loc); } else state.from=loc;
   hideSug(); sugTarget.blur(); updateMarkers(); plan();
@@ -631,7 +641,7 @@ function privBlockersFor(r, existing){
   const s=r.shape, a=s[0], z=s[s.length-1];
   return (r.edges||[]).filter(e=>e.priv).sort((x,y)=>y.length-x.length)
     .map(e=>s[Math.floor((e.begin_shape_index+e.end_shape_index)/2)])
-    .filter(p=>p && hav(p,a)>300 && hav(p,z)>300 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<150) && !existing.some(q=>hav(p,q)<30))
+    .filter(p=>p && hav(p,a)>300 && hav(p,z)>300 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<Math.max(150,v.area||0)) && !existing.some(q=>hav(p,q)<30))
     .slice(0,60);
 }
 // Snelwegcomplexen en parkings precies opzoeken in OpenStreetMap (één keer, daarna bewaard op het toestel).
@@ -699,7 +709,7 @@ function routeBody(from, to, v, heading, blockers=[], vias=state.vias){
   // Onverhard mag als de weg voor auto's open is (OSM-toegang) en goed berijdbaar is; zand/aarde wordt verderop weggeduwd.
   const auto = {use_highways:v.use_highways, use_tolls:0, use_tracks:0, exclude_unpaved:!state.gravel, use_living_streets:0.3, use_distance:v.use_distance, service_penalty:5, service_factor:1};
   if(v.top_speed) auto.top_speed=v.top_speed;
-  const body = {locations:[loc0, ...vias.map(p=>({lat:p.lat, lon:p.lon, type:'through', ...(state.noFilter?{}:{search_filter:{max_road_class:'unclassified'}})})) /* via-punt op een klein weggetje laten vastklikken, niet op de grote weg */, {lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
+  const body = {locations:[loc0, ...vias.map(p=>({lat:p.lat, lon:p.lon, type:'through', ...(p.area?{radius:p.area}:{}), ...(state.noFilter?{}:{search_filter:{max_road_class:'unclassified'}})})) /* via-punt op een klein weggetje laten vastklikken, niet op de grote weg */, {lat:to.lat, lon:to.lon}], costing:'auto', costing_options:{auto}, language:'nl-NL', units:'kilometers', directions_type:'instructions'};
   if(v.alts && !vias.length) body.alternates=v.alts; // alternatieven kan alleen zonder via-punten
   // eigen vermijd-plekken eerst, daarna zoveel 'blokkades' op grote wegen als binnen de limiet past
   const polys=[]; let budget=MAX_POLY_M;
@@ -848,7 +858,7 @@ function blockersFor(r, classes, minM, existing){
   return (r.edges||[]).filter(e=>(classes.includes(e.road_class) && e.length*1000>=minM) || (BAD_SURFACE.includes(e.surface) && e.length*1000>=30))
     .sort((x,y)=>y.length-x.length)
     .map(e=>s[Math.floor((e.begin_shape_index+e.end_shape_index)/2)])
-    .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<150) && !existing.some(q=>hav(p,q)<30))
+    .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<Math.max(150,v.area||0)) && !existing.some(q=>hav(p,q)<30))
     .slice(0,60);
 }
 // Drie keuzes: kort & groen weegt afstand, groenst weegt bijna alleen rust, sneller weegt reistijd.
@@ -905,7 +915,7 @@ function renderRoutes(fit){
 function renderModes(){ document.querySelectorAll('.mode').forEach(b=>{ const on=b.dataset.mode===state.mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',on); }); }
 renderModes();
 document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{ state.mode=b.dataset.mode; store.set('mode',state.mode); renderModes(); if(state.routes.length){ rank(); renderRoutes(true); } }));
-$('#moreBtn').addEventListener('click',()=>{ const open=$('#moreBox').hidden; $('#moreBox').hidden=!open; $('#viaField').hidden=!open; $('#moreBtn').setAttribute('aria-expanded',open); $('#moreBtn').textContent=open?'Minder opties ▴':'Meer opties ▾'; });
+$('#moreBtn').addEventListener('click',()=>{ const open=$('#moreBox').hidden; $('#moreBox').hidden=!open; $('#moreBtn').setAttribute('aria-expanded',open); $('#moreBtn').textContent=open?'Minder opties ▴':'Meer opties ▾'; });
 
 /* ---------- navigatie ---------- */
 const TURN_ANGLE = {7:0,8:0,9:45,10:90,11:135,12:180,13:-180,14:-135,15:-90,16:-45,17:0,18:35,19:-35,20:35,21:-35,22:0,23:20,24:-20,25:0};
