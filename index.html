@@ -34,6 +34,7 @@ button{cursor:pointer}
 [hidden]{display:none!important}
 #map{position:fixed;inset:0;z-index:0;background:var(--bg)}
 .leaflet-control-attribution{font-size:10px}
+.tiles-dark{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
 
 /* Zoekpaneel */
 #plan{position:fixed;top:0;left:0;right:0;z-index:500;padding:calc(env(safe-area-inset-top,0px) + 10px) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));pointer-events:none}
@@ -174,9 +175,9 @@ const store = {
 /* ---------- kaart ---------- */
 const dark = matchMedia('(prefers-color-scheme: dark)').matches;
 const map = L.map('map', {zoomControl:false, attributionControl:true}).setView(store.get('view',[52.1,5.3]), store.get('zoom',8));
-L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`, {
-  maxZoom:19, subdomains:'abcd',
-  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/">CARTO</a> · routes <a href="https://valhalla.github.io/valhalla/">Valhalla</a>'
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom:19, className: dark ? 'tiles-dark' : '',
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · routes <a href="https://valhalla.github.io/valhalla/">Valhalla</a>'
 }).addTo(map);
 map.on('moveend', () => { if(!nav.active){ const c=map.getCenter(); store.set('view',[c.lat,c.lng]); store.set('zoom',map.getZoom()); } });
 
