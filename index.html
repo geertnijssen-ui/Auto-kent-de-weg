@@ -109,6 +109,8 @@ button{cursor:pointer}
 body.picking #sheet,body.picking #plan{display:none}
 #pickbar{position:fixed;z-index:650;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:560px;margin:0 auto;padding:12px 14px;display:flex;align-items:center;gap:12px}
 #pickbar span{flex:1;font-size:16px}#pickbar .btn{flex:none;min-width:0;padding:12px 18px}
+#newver{position:fixed;z-index:660;top:calc(env(safe-area-inset-top,0px) + 10px);left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));max-width:560px;margin:0 auto;padding:10px 12px;display:flex;align-items:center;gap:10px}
+#newver span{flex:1}#newver .btn{flex:none;min-width:0;padding:10px 16px}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 90px);z-index:700;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:15px;max-width:90vw;text-align:center}
 .me{width:34px;height:34px}
 .me svg{width:34px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));transition:transform .4s}
@@ -151,6 +153,8 @@ body.picking #sheet,body.picking #plan{display:none}
       <span class="small" id="zoneInfo"></span>
       <button class="chip" id="zoneClear" hidden>Wis plekken</button>
       <button class="chip" id="gravel" aria-pressed="true">Grind- en halfverharde wegen: aan</button>
+      <button class="chip" id="update">App bijwerken</button>
+      <span class="small" id="versionTxt"></span>
     </div>
     <div class="actions">
       <button class="btn primary" id="start" disabled>Start navigatie</button>
@@ -175,11 +179,13 @@ body.picking #sheet,body.picking #plan{display:none}
   </div>
 </div>
 <div id="pickbar" class="card" hidden><span id="pickTxt"></span><button class="btn primary" id="pickDone">Klaar</button></div>
+<div id="newver" class="card" hidden><span>Er is een nieuwe versie van de app.</span><button class="btn primary" id="newverBtn">Bijwerken</button></div>
 <div id="toast" hidden></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
+const APP_VERSION = '2026-11-11.8'; // ophogen bij elke wijziging
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const PHOTON = 'https://photon.komoot.io/api/';
 const $ = s => document.querySelector(s);
@@ -701,6 +707,29 @@ if(state.to){ $('#to').value=state.to.label; }
 updateMarkers(); drawZones();
 startWatch();
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+/* ---------- bijwerken ---------- */
+$('#versionTxt').textContent='versie '+APP_VERSION;
+async function latestVersion(){
+  const r=await fetch('index.html?v='+Date.now(),{cache:'no-store'}); const t=await r.text();
+  return (t.match(/APP_VERSION = '([^']+)'/)||[])[1];
+}
+async function doUpdate(){
+  toast('App wordt bijgewerkt…');
+  try{ const regs=await navigator.serviceWorker?.getRegistrations?.()||[]; await Promise.all(regs.map(r=>r.update().catch(()=>{}))); }catch(e){}
+  try{ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }catch(e){}
+  location.replace(location.pathname+'?v='+Date.now());
+}
+$('#update').addEventListener('click', async ()=>{
+  if(nav.active) return;
+  try{ const v=await latestVersion(); if(v && v===APP_VERSION){ toast('Je hebt al de nieuwste versie ('+v+').'); return; } }catch(e){ toast('Geen verbinding, probeer later opnieuw.'); return; }
+  doUpdate();
+});
+$('#newverBtn').addEventListener('click', doUpdate);
+async function checkUpdate(){ if(nav.active) return; try{ const v=await latestVersion(); if(v && v!==APP_VERSION) $('#newver').hidden=false; }catch(e){} }
+setTimeout(checkUpdate, 4000);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkUpdate(); });
+if(location.search.includes('v=')) history.replaceState(null,'',location.pathname);
 </script>
 </body>
 </html>
