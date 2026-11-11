@@ -73,6 +73,11 @@ button{cursor:pointer}
 .bar i{display:block;height:100%}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:var(--c)}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mode{border:2px solid var(--line);background:transparent;border-radius:12px;padding:10px 6px;display:grid;gap:2px;text-align:center}
+.mode b{font-size:15px}.mode small{font-size:12px;color:var(--muted)}
+.mode.on{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}.mode.on small{color:var(--accent-fg);opacity:.85}
+.more{border:0;background:none;color:var(--muted);font-size:14px;padding:2px 0;justify-self:start}
 .slider{display:grid;gap:4px}
 .slider label{display:flex;justify-content:space-between;font-size:14px;color:var(--muted)}
 .slider input{width:100%;accent-color:var(--accent)}
@@ -115,7 +120,7 @@ button{cursor:pointer}
     <div class="fields">
       <div class="field"><span class="dot" style="background:var(--accent)"></span><input id="from" placeholder="Mijn locatie" autocomplete="off" aria-label="Van"><button class="clear" data-for="from" aria-label="Wis van">×</button></div>
       <div class="field"><span class="dot" style="background:var(--busy)"></span><input id="to" placeholder="Waar wil je heen?" autocomplete="off" aria-label="Naar"><button class="clear" data-for="to" aria-label="Wis naar">×</button></div>
-      <div class="field"><span class="dot" style="background:#1a73e8"></span><input id="via" placeholder="Rijden via… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
+      <div class="field" id="viaField" hidden><span class="dot" style="background:#1a73e8"></span><input id="via" placeholder="Rijden via… (bv. Rekem)" autocomplete="off" aria-label="Via-punt toevoegen"></div>
       <div id="vias" class="vias" hidden></div>
     </div>
     <div class="side">
@@ -131,11 +136,13 @@ button{cursor:pointer}
     <div id="status" class="status">Zoek een bestemming. Routenet kiest dan de rustigste route via kleinere, verharde wegen.</div>
     <div id="routes" class="routes"></div>
     <div class="legend" id="legend" hidden><span style="--c:var(--quiet)">rustig</span><span style="--c:var(--mid)">verbindingsweg</span><span style="--c:var(--busy)">grote weg</span></div>
-    <div class="slider">
-      <label for="balance"><span>Zo rustig mogelijk</span><span id="balanceTxt">max. +30% tijd</span><span>Sneller</span></label>
-      <input type="range" id="balance" min="0" max="100" value="30">
+    <div class="modes" role="radiogroup" aria-label="Soort route">
+      <button class="mode" data-mode="kortgroen" role="radio"><b>Kort &amp; groen</b><small>binnendoor, weinig omweg</small></button>
+      <button class="mode" data-mode="groenst" role="radio"><b>Groenst</b><small>omweg mag</small></button>
+      <button class="mode" data-mode="snel" role="radio"><b>Sneller</b><small>rustig waar het kan</small></button>
     </div>
-    <div class="zones">
+    <button class="more" id="moreBtn" aria-expanded="false">Meer opties ▾</button>
+    <div class="zones" id="moreBox" hidden>
       <button class="chip" id="viaMode">+ Via-punt op kaart</button>
       <button class="chip" id="zoneMode">+ Drukke plek vermijden</button>
       <span class="small" id="zoneInfo"></span>
@@ -243,7 +250,8 @@ const state = {
   myPos:null,
   zones: store.get('zones', []),
   routes:[], sel:0,
-  balance: store.get('balance2', 30),
+  mode: store.get('mode', 'kortgroen'),
+  showAll:false,
   gravel: store.get('gravel', true),
   vias: store.get('vias', []),
 };
@@ -399,6 +407,7 @@ const VARIANTS = [
   {name:'rustig',    use_highways:0,   use_distance:0,   alts:2},
   {name:'binnendoor', use_highways:0, use_distance:0.4, top_speed:70, alts:1},
   {name:'landweggetjes', use_highways:0, use_distance:0.7, top_speed:55, alts:1},
+  {name:'kortste', use_highways:0, use_distance:1, top_speed:50, alts:1},
 ];
 const BAD_SURFACE = ['dirt','path','impassable']; // zand, aarde, paadjes
 const PUSH_VARIANT = {name:'wijkjes', use_highways:0, use_distance:0.6, top_speed:50, alts:0};
@@ -454,11 +463,14 @@ async function plan(opts={}){
     const msg = lastErr?.code===442 || /no path/i.test(lastErr?.message||'') ? 'Geen route gevonden. Misschien ligt een vermeden plek in de weg?' : 'Route berekenen lukt niet ('+(lastErr?.message||'geen verbinding')+'). Probeer het zo opnieuw.';
     setStatus(msg,true); if(opts.reroute) toast(msg); return;
   }
-  found.splice(6);
+  found.splice(8);
   for(const r of found){ await analyse(r); if(seq!==planSeq) return; }
   // Wegduwen: blokkeer de grote wegen op de rustigste route en vraag opnieuw, zodat hij door wijken en binnenwegen moet.
   setStatus(opts.reroute ? 'Nieuwe route berekenen…' : 'Grote wegen wegduwen naar wijkjes en binnenwegen…');
-  let base = found.filter(r=>r.edges).sort((a,b)=>(b.quiet??0)-(a.quiet??0))[0];
+  const withEdges=found.filter(r=>r.edges);
+  const bases=[...new Set([withEdges.slice().sort((a,b)=>(b.quiet??0)-(a.quiet??0))[0], withEdges.slice().sort((a,b)=>a.km-b.km)[0]])].filter(Boolean);
+  if(opts.quick) bases.splice(1);
+  for(let base of bases){
   let blockers=[];
   const rounds = opts.quick ? [['motorway','trunk','primary','secondary']] : [['motorway','trunk','primary','secondary'],['motorway','trunk','primary','secondary','tertiary']];
   for(const [ri,cls] of rounds.entries()){
@@ -474,7 +486,8 @@ async function plan(opts={}){
       if(addUnique(found, r)) base=r; else break;
     }catch(e){ break; }
   }
-  state.routes=found;
+  }
+  state.routes=found; state.showAll=false;
   rank();
   if(opts.reroute){ nav.load(state.routes[state.sel]); return; }
   renderRoutes(true);
@@ -490,10 +503,15 @@ function blockersFor(r, classes, minM, existing){
     .filter(p=>p && hav(p,a)>500 && hav(p,z)>500 && !state.vias.some(v=>hav(p,[v.lat,v.lon])<500) && !existing.some(q=>hav(p,q)<30))
     .slice(0,60);
 }
-function allowedExtra(){ return 0.05 + (100-state.balance)/100*0.95; } // 5% .. 100%
+// Drie keuzes: kort & groen weegt afstand, groenst weegt bijna alleen rust, sneller weegt reistijd.
+const MODES = {
+  kortgroen: {limit:0.8, score:(r,f,k)=>(r.quiet??50) - 60*(r.km/k-1) - 10*(r.time/f-1)},
+  groenst:   {limit:1.0, score:(r,f,k)=>(r.quiet??50) - 12*(r.time/f-1)},
+  snel:      {limit:0.25, score:(r,f,k)=>0.4*(r.quiet??50) - 100*(r.time/f-1)},
+};
 function rank(){
-  const rs=state.routes; const fastest=Math.min(...rs.map(r=>r.time)); const limit=fastest*(1+allowedExtra());
-  rs.forEach(r=>{ r.ok = r.time<=limit+1 && !(r.roughKm>0.2); r.score = (r.quiet??50) - (r.time/fastest-1)*20*(state.balance/50); });
+  const rs=state.routes; const fastest=Math.min(...rs.map(r=>r.time)), shortest=Math.min(...rs.map(r=>r.km)); const M=MODES[state.mode]||MODES.kortgroen; const limit=fastest*(1+M.limit);
+  rs.forEach(r=>{ r.ok = r.time<=limit+1 && !(r.roughKm>0.2); r.score = M.score(r,fastest,shortest); });
   rs.sort((a,b)=> (b.ok-a.ok) || (b.score-a.score) || (a.time-b.time));
   state.sel=0;
 }
@@ -517,6 +535,7 @@ function renderRoutes(fit){
   const fastest=Math.min(...state.routes.map(r=>r.time));
   const box=$('#routes'); box.innerHTML='';
   state.routes.forEach((r,i)=>{
+    if(!state.showAll && i>=2 && i!==state.sel) return;
     const b=document.createElement('button'); b.className='route'+(i===state.sel?' sel':'');
     const [pt,pc]=pillFor(r.quiet);
     const extra = r.time-fastest>60 ? ' · +'+fmtTime(r.time-fastest) : i===state.sel||r.time===fastest ? ' · snelste' : '';
@@ -528,13 +547,16 @@ function renderRoutes(fit){
     b.addEventListener('click',()=>{ state.sel=i; renderRoutes(false); });
     box.appendChild(b);
   });
+  if(state.routes.length>2){ const m=document.createElement('button'); m.className='more'; m.textContent=state.showAll?'Minder routes tonen':'Nog '+(state.routes.length-2)+' andere routes tonen'; m.addEventListener('click',()=>{ state.showAll=!state.showAll; renderRoutes(false); }); box.appendChild(m); }
   $('#legend').hidden=!cur.edges;
-  setStatus(state.routes.length>1 ? 'Bovenste route is de rustigste binnen je omweg-grens. Tik een andere aan om te vergelijken.' : 'Dit is de rustigste route die we vonden.');
+  const msg={kortgroen:'Kortste route die toch binnendoor gaat.', groenst:'Rustigste route, omweg mag.', snel:'Snelle route, rustig waar het kan.'}[state.mode];
+  setStatus(state.sel===0 ? msg+' Druk op Start.' : 'Andere route gekozen.');
   $('#start').disabled=false; $('#demo').disabled=false;
 }
-function updateBalanceTxt(){ $('#balanceTxt').textContent='max. +'+Math.round(allowedExtra()*100)+'% tijd'; }
-$('#balance').value=state.balance; updateBalanceTxt();
-$('#balance').addEventListener('input',e=>{ state.balance=+e.target.value; store.set('balance2',state.balance); updateBalanceTxt(); if(state.routes.length){ rank(); renderRoutes(false); } });
+function renderModes(){ document.querySelectorAll('.mode').forEach(b=>{ const on=b.dataset.mode===state.mode; b.classList.toggle('on',on); b.setAttribute('aria-checked',on); }); }
+renderModes();
+document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{ state.mode=b.dataset.mode; store.set('mode',state.mode); renderModes(); if(state.routes.length){ rank(); renderRoutes(true); } }));
+$('#moreBtn').addEventListener('click',()=>{ const open=$('#moreBox').hidden; $('#moreBox').hidden=!open; $('#viaField').hidden=!open; $('#moreBtn').setAttribute('aria-expanded',open); $('#moreBtn').textContent=open?'Minder opties ▴':'Meer opties ▾'; });
 
 /* ---------- navigatie ---------- */
 const TURN_ANGLE = {7:0,8:0,9:45,10:90,11:135,12:180,13:-180,14:-135,15:-90,16:-45,17:0,18:35,19:-35,20:35,21:-35,22:0,23:20,24:-20,25:0};
